@@ -2,80 +2,110 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { ActivityDetector } from './detection/activityDetector';
+import { MusicGenerator } from './music/generator';
 
+let activityDetector: ActivityDetector | undefined;
+let musicGenerator: MusicGenerator | undefined;
 let currentPanel: vscode.WebviewPanel | undefined;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
+export function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "vibe-driven-development" is now active!');
-		let showCompanion = vscode.commands.registerCommand('vibe-driven-development.showCompanion', () => {
+
+	let showCompanion = vscode.commands.registerCommand('vibe-driven-development.showCompanion', () => {
 		if (currentPanel) {
 			currentPanel.reveal(vscode.ViewColumn.Two);
-		} else {
-			currentPanel = vscode.window.createWebviewPanel(
-				'vibeCompanion',
-				'🎵 Vibe Companion',
-				vscode.ViewColumn.Two,
-				{
-					enableScripts: true,
-					retainContextWhenHidden: true,
-					localResourceRoots: [
-						vscode.Uri.file(path.join(context.extensionPath, 'dist'))
-					]
-				}
-			);
-
-			currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
-
-			// Handle messages from webview
-			currentPanel.webview.onDidReceiveMessage(
-				message => {
-					switch (message.command) {
-						case 'vibeChanged':
-							console.log('Vibe changed to:', message.vibe);
-							// TODO: handle vibe change
-							break;
-						case 'requestHint':
-							// TODO: AI hint generation
-							currentPanel?.webview.postMessage({
-								command: 'hint',
-								text: 'Try breaking this into smaller functions!'
-							});
-							break;
-					}
-				},
-				undefined,
-				context.subscriptions
-			);
-
-			currentPanel.onDidDispose(() => {
-				currentPanel = undefined;
-			});
+			return;
 		}
+
+		currentPanel = vscode.window.createWebviewPanel(
+			'vibeCompanion',
+			'🎵 Vibe Companion',
+			vscode.ViewColumn.Two,
+			{
+				enableScripts: true,
+				retainContextWhenHidden: true,
+				localResourceRoots: [
+					vscode.Uri.file(path.join(context.extensionPath, 'dist'))
+				]
+			}
+		);
+
+		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
+
+		type MusicData = {
+			command: string;
+			vibe?: string;  // optional, since it's only used for 'vibeChanged'
+			state?: string; // optional, since it's used for 'stateChanged'
+			text?: string;  // optional, for 'hint'
+		};
+
+
+		// 🟢 Initialize Music Generator
+		musicGenerator = new MusicGenerator((data) => {
+			currentPanel?.webview.postMessage(data);
+		});
+
+		// 🟢 Initialize Activity Detector
+		activityDetector = new ActivityDetector((newState) => {
+			console.log('📡 Activity state changed:', newState);
+
+			currentPanel?.webview.postMessage({
+				command: 'stateChanged',
+				state: newState
+			});
+
+			musicGenerator?.playStateMusic(newState);
+		});
+
+		// 🟢 Handle messages from Webview
+		currentPanel.webview.onDidReceiveMessage(
+			message => {
+				switch (message.command) {
+					case 'vibeChanged':
+						console.log('Vibe changed to:', message.vibe);
+						musicGenerator?.setVibe(message.vibe);
+						break;
+					case 'requestHint':
+						// TODO: AI hint generation
+						currentPanel?.webview.postMessage({
+							command: 'hint',
+							text: 'Try breaking this into smaller functions!'
+						});
+						break;
+				}
+			},
+			undefined,
+			context.subscriptions
+		);
+
+		currentPanel.onDidDispose(() => {
+			currentPanel = undefined;
+		});
 	});
 
 	context.subscriptions.push(showCompanion);
 
 	// Auto-show on startup
 	vscode.commands.executeCommand('vibe-driven-development.showCompanion');
-
 	// TODO: Activity detection
 	// vscode.workspace.onDidChangeTextDocument(e => {
 	//   // detect typing
 	// });
-    }
+}
 
 function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): string {
 	return `<!DOCTYPE html>
 	<html lang="en">
+	
 	<head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>Vibe Companion</title>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+		<title>VibeCode</title>
 		<style>
 			* { margin: 0; padding: 0; box-sizing: border-box; }
 			body {
@@ -253,6 +283,8 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 	// });
 	// context.subscriptions.push(disposable);
 }
+
+
 
 // This method is called when your extension is deactivated
 export function deactivate() {}

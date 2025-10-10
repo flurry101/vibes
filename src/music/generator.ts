@@ -1,37 +1,34 @@
-import * as Tone from 'tone';
+// src/music/generator.ts
+import { MusicData } from '../types';
 
 export type MusicState = 'idle' | 'productive' | 'stuck' | 'testing' | 'celebrating';
 
 export class MusicGenerator {
-  private synth: Tone.PolySynth | null = null;
-  private initialized = false;
+  // This is just a placeholder
+  // Real music generation happens in webview
+  private callback: (data: MusicData) => void;
+  constructor(callback: (data: MusicData) => void) {
+    this.callback = callback;
+    console.log('Music generator initialized');
+  }
 
   async initialize() {
-    if (this.initialized) return;
-    await Tone.start();
-    this.synth = new Tone.PolySynth(Tone.Synth).toDestination();
-    this.initialized = true;
+    console.log('Music generator initialized');
   }
 
   async playStateMusic(state: MusicState) {
-    if (!this.initialized) await this.initialize();
-    
-    // TODO: AI-generated music
-    // For now, simple placeholder
-    switch (state) {
-      case 'productive':
-        this.synth?.triggerAttackRelease(['C4', 'E4', 'G4'], '4n');
-        break;
-      case 'stuck':
-        this.synth?.triggerAttackRelease(['A3', 'C4'], '2n');
-        break;
-      case 'celebrating':
-        this.synth?.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '8n');
-        break;
-    }
+    console.log('Playing music for state:', state);
+    // Will send message to webview to actually play music
   }
 
+  setVibe(vibe: string) {
+    console.log('Setting vibe:', vibe);
+    // Logic to adjust music based on the vibe, e.g., update the webview music player or settings
+    // You'll implement the music-vibe mapping here
+  }
+
+
   stop() {
-    Tone.Transport.stop();
+    console.log('Stopping music');
   }
 }
