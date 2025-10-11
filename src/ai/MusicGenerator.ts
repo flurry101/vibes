@@ -1,6 +1,6 @@
 import { MusicParams, ActivityState, VibeMode } from '../types';
 
-export class AIMusicGenerator {  // FIXED: removed space
+export class AIMusicGenerator {
   private cache: Map<string, MusicParams> = new Map();
 
   constructor(private apiKey: string) {}

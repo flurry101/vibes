@@ -10,7 +10,7 @@ export const CURATED_MUSIC: Record<ActivityState, MusicSource[]> = {
     { type: 'youtube', url: 'https://musicforprogramming.net/latest/' }
   ],
   stuck: [
-    { type: 'youtube', url: 'https://www.youtube.com/watch?v=DWcJFNfaw9c' }, // ambient
+    { type: 'youtube', url: 'https://youtu.be/4xDzrJKXOOY' }, // ambient
   ],
   procrastinating: [
     { type: 'youtube', url: 'https://www.youtube.com/watch?v=dwY7w0k3j2Y' }, // anxiety inducing

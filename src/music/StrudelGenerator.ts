@@ -1,4 +1,4 @@
-import { ActivityState, VibeMode } from '../types/index.js';
+import { ActivityState, VibeMode } from '../types';
 
 export class StrudelGenerator {
   // Strudel is a live coding music language
