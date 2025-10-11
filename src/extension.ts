@@ -170,7 +170,7 @@ function showCompanion(context: vscode.ExtensionContext, apiKey: string) {
 
 function startAnimationLoop() {
 	setInterval(() => {
-		if (!currentPanel) return;
+		if (!currentPanel) {return;};
 		
 		const frameCount = getASCIIFrameCount(currentVibe, currentState);
 		animationFrame = (animationFrame + 1) % frameCount;

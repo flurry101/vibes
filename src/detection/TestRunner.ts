@@ -21,7 +21,7 @@ export class TestRunnerIntegration {
       let passedTests = 0;
       let failedTests = 0;
 
-      event.results.forEach(result => {
+      event.results.forEach((result: { state: any }) => {
         if (result.state === (vscode as any).TestResultState.Passed) {
           passedTests++;
         } else if (result.state === (vscode as any).TestResultState.Failed) {
