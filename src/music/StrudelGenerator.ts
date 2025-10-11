@@ -1,51 +1,75 @@
-import { ActivityState, VibeMode } from '../types';
+import { ActivityState, VibeMode } from '../types.js';
+
+type PatternMap = Record<ActivityState, string>;
 
 export class StrudelGenerator {
-  // Strudel is a live coding music language
-  // https://strudel.tidalcycles.org/
-  
-  generateStrudelCode(state: ActivityState, vibe: VibeMode): string {
-    const patterns = {
-      'idle': `// Idle ambient
-note("c2 e2 g2").slow(4).gain(0.3).room(0.9)`,
-      
-      'productive': `// Productive flow
-stack(
-  note("<c4 e4 g4 b4>").fast(2),
-  note("c2").slow(2)
-).gain(0.5).lpf(2000)`,
-      
-      'stuck': `// Contemplative
-note("<a3 c4 e4>").slow(3).delay(0.5).room(0.7).gain(0.4)`,
-      
-      'procrastinating': `// Anxious
-note("<d4 f4 a4>").fast(3).sometimes(rev).gain(0.5)`,
-      
-      'testing': `// Suspenseful
-note("<g3 b3 d4>").struct("x x . x").delay(0.3).gain(0.4)`,
-      
-      'building': `// Elevator music
-note("<c3 g3>").slow(8).gain(0.2).room(0.5)`,
-      
-      'test_passed': `// Celebration!
-stack(
-  note("<c5 e5 g5 c6>").fast(4),
-  note("c2 g2").fast(2)
-).gain(0.7).lpf(4000)`,
-      
-      'test_failed': `// Disappointment
-note("<e4 d4 c4 b3>").slow(2).gain(0.3).lpf(1000)`
+  private currentPattern: string = '';
+  private currentState: ActivityState = 'idle';
+  private currentVibe: VibeMode = 'encouraging';
+
+  constructor() {
+    console.log('Strudel Generator initialized');
+  }
+
+  async initialize(): Promise<void> {
+    console.log('Initializing Strudel...');
+    // Initialize Strudel library here
+  }
+
+  generatePattern(state: ActivityState, vibe: VibeMode): string {
+    this.currentState = state;
+    this.currentVibe = vibe;
+
+    const basePattern = this.getBasePattern(state);
+    const modifiedPattern = this.applyVibe(basePattern, vibe);
+    
+    this.currentPattern = modifiedPattern;
+    return modifiedPattern;
+  }
+
+  private getBasePattern(state: ActivityState): string {
+    const patterns: PatternMap = {
+      idle: 'sound("bd").slow(2)',
+      productive: 'sound("bd hh sd hh").fast(1.5)',
+      stuck: 'sound("bd . sd .").slow(1)',
+      procrastinating: 'sound("bd . . .").slow(2)',
+      testing: 'sound("bd sd").palindrome()',
+      building: 'sound("bd hh sd hh").fast(2)',
+      test_passed: 'sound("bd*4 sd*4").fast(2)',
+      test_failed: 'sound("bd sd").rev().slow(1)'
     };
+    
+    return patterns[state] || patterns.idle;
+  }
 
-    const basePattern = patterns[state] || patterns['idle'];
-
-    // Modify based on vibe
-    if (vibe === 'roasting') {
-      return basePattern + `.sometimes(x => x.fast(1.5).gain(0.6))`; // More chaotic
-    } else if (vibe === 'neutral') {
-      return basePattern; // Keep as is
-    } else {
-      return basePattern + `.room(0.5)`; // More reverb for encouraging
+  private applyVibe(pattern: string, vibe: VibeMode): string {
+    switch (vibe) {
+      case 'encouraging':
+        return `${pattern}.gain(0.8)`;
+      case 'roasting':
+        return `${pattern}.gain(0.6).fast(1.2)`;
+      case 'neutral':
+        return `${pattern}.gain(0.5)`;
+      default:
+        return pattern;
     }
+  }
+
+  async play(): Promise<void> {
+    console.log('Playing pattern:', this.currentPattern);
+    // Strudel play logic here
+  }
+
+  stop(): void {
+    console.log('Stopping Strudel playback');
+    // Strudel stop logic here
+  }
+
+  dispose(): void {
+    this.stop();
+  }
+
+  getCurrentPattern(): string {
+    return this.currentPattern;
   }
 }

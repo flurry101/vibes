@@ -1,148 +1,88 @@
 import * as vscode from 'vscode';
-import { ActivityState, ActivityMetrics } from '../types';
+import { ActivityState, ActivityMetrics } from '../types.js';
 
 export class ActivityDetector {
   private lastActivity: number = Date.now();
-  private lastFile: string = '';
   private typingCount: number = 0;
-  private tabSwitchCount: number = 0;
-  private fileChangeCount: number = 0;
-  private timeInCurrentFile: number = Date.now();
   private currentState: ActivityState = 'idle';
-  private typingTimer: NodeJS.Timeout | null = null;
-  private monitoringInterval: NodeJS.Timeout | null = null;
-  private resetInterval: NodeJS.Timeout | null = null;
+  private idleTimeout: NodeJS.Timeout | null = null;
 
-  constructor(
-    private onStateChange: (state: ActivityState, metrics: ActivityMetrics) => void
-  ) {
-    this.setupListeners();
-    this.startMonitoring();
+  constructor(private onStateChange: (state: ActivityState) => void) {
+    this.startDetection();
   }
 
-  private setupListeners() {
-    // Track typing
+  private startDetection() {
+    // Detect typing
     vscode.workspace.onDidChangeTextDocument(e => {
-      if (e.contentChanges.length > 0) {
-        this.lastActivity = Date.now();
-        this.typingCount += e.contentChanges[0].text.length;
-        
-        if (this.typingTimer) {
-          clearTimeout(this.typingTimer);
-        }
-        this.typingTimer = setTimeout(() => {
-          this.typingCount = 0;
-        }, 1000);
-      }
-    });
-
-    // Track file/tab switching
-    vscode.window.onDidChangeActiveTextEditor(editor => {
-      if (editor) {
-        const currentFile = editor.document.fileName;
-        
-        if (this.lastFile && this.lastFile !== currentFile) {
-          this.tabSwitchCount++;
-          this.fileChangeCount++;
-          this.timeInCurrentFile = Date.now();
-        }
-        
-        this.lastFile = currentFile;
-        this.lastActivity = Date.now();
-      }
-    });
-
-    // Track window focus
-    vscode.window.onDidChangeWindowState(state => {
-      if (!state.focused) {
-        this.lastActivity = Date.now();
-      }
-    });
-  }
-
-  private startMonitoring() {
-    // Check state every 5 seconds
-    this.monitoringInterval = setInterval(() => {
+      this.lastActivity = Date.now();
+      this.typingCount++;
       this.updateState();
-    }, 5000);
+    });
 
-    // Reset counters every minute
-    this.resetInterval = setInterval(() => {
-      this.tabSwitchCount = 0;
-      this.fileChangeCount = 0;
-    }, 60000);
+    // Reset typing count after 10 seconds of inactivity
+    this.startIdleTimer();
+
+    // Check for idle every 5 seconds
+    setInterval(() => {
+      this.checkIdleState();
+    }, 5000);
   }
 
-  private getMetrics(): ActivityMetrics {
-    const now = Date.now();
+  private startIdleTimer() {
+    if (this.idleTimeout) {
+      clearTimeout(this.idleTimeout);
+    }
+
+    this.idleTimeout = setTimeout(() => {
+      // Reset typing count after inactivity
+      this.typingCount = 0;
+      this.updateState();
+    }, 10000); // Reset after 10 seconds of inactivity
+  }
+
+  private checkIdleState() {
+    const idleTime = Date.now() - this.lastActivity;
+    
+    if (idleTime > 30000) {
+      this.updateState('idle');
+    }
+  }
+
+  private updateState(forcedState?: ActivityState) {
+    const newState = forcedState || this.detectState();
+    
+    if (newState !== this.currentState) {
+      this.currentState = newState;
+      this.onStateChange(newState);
+    }
+  }
+
+  private detectState(): ActivityState {
+    const idleTime = Date.now() - this.lastActivity;
+    
+    if (idleTime > 30000) return 'idle';  // More than 30 seconds of inactivity
+    if (this.typingCount > 10) return 'productive'; // Typing count over 10 changes to productive
+    if (idleTime > 10000 && idleTime < 30000) return 'stuck';  // More than 10 seconds idle but less than 30
+    
+    return 'productive';
+  }
+
+  public getMetrics(): ActivityMetrics {
     return {
-      typingSpeed: this.typingCount * 60,
-      idleTime: now - this.lastActivity,
-      tabSwitches: this.tabSwitchCount,
-      fileChanges: this.fileChangeCount,
-      timeInFile: now - this.timeInCurrentFile
+      typingCount: this.typingCount,
+      idleTime: Date.now() - this.lastActivity,
+      lastActivity: this.lastActivity
     };
   }
 
-  private detectState(metrics: ActivityMetrics): ActivityState {
-    const { typingSpeed, idleTime, tabSwitches, timeInFile } = metrics;
-
-    // Procrastinating: lots of tab switches, not much typing
-    if (tabSwitches > 10 && typingSpeed < 100) {
-      return 'procrastinating';
-    }
-
-    // Productive: actively typing
-    if (typingSpeed > 200 && idleTime < 10000) {
-      return 'productive';
-    }
-
-    // Stuck: been in same file for a while, not typing
-    if (timeInFile > 120000 && idleTime > 30000 && idleTime < 180000) {
-      return 'stuck';
-    }
-
-    // Idle: no activity for 3+ minutes
-    if (idleTime > 180000) {
-      return 'idle';
-    }
-
-    return typingSpeed > 50 ? 'productive' : 'stuck';
-  }
-
-  private updateState() {
-    const metrics = this.getMetrics();
-    const newState = this.detectState(metrics);
-
-    if (newState !== this.currentState) {
-      this.currentState = newState;
-      console.log(`📊 State changed: ${newState}`, metrics);
-      this.onStateChange(newState, metrics);
-    }
-  }
-
-  public manualStateChange(state: ActivityState) {
-    this.currentState = state;
-    this.onStateChange(state, this.getMetrics());
-  }
-
-  public getCurrentState(): ActivityState {
-    return this.currentState;
-  }
-
-  public getMetricsSnapshot(): ActivityMetrics {
-    return this.getMetrics();
+  // Test runner detection - need to watch for test events in the terminal/output
+  onTestRun(passed: boolean) {
+    this.updateState(passed ? 'test_passed' : 'test_failed');
   }
 
   public dispose() {
-    if (this.typingTimer) {
-      clearTimeout(this.typingTimer);
-    }
-    if (this.monitoringInterval) {
-      clearInterval(this.monitoringInterval);
-    }
-    if (this.resetInterval) {
-      clearInterval(this.resetInterval);
+    if (this.idleTimeout) {
+      clearTimeout(this.idleTimeout);
     }
   }
 }

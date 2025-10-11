@@ -1,64 +1,66 @@
 import * as vscode from 'vscode';
-import { ActivityDetector } from './ActivityDetector.js';
+import { ActivityDetector } from './activityDetector.js';
 
-export class TestRunnerIntegration {
-  private testRunCount: number = 0;
-  private lastTestTime: number = 0;
+export class TestRunner {
+  private detector: ActivityDetector;
+  private testRunning: boolean = false;
 
-  constructor(
-    private activityDetector: ActivityDetector,
-    private onTestResult: (passed: boolean, testCount: number) => void
-  ) {
-    this.setupTestListeners();
+  constructor(detector: ActivityDetector) {
+    this.detector = detector;
+    this.setupTestWatcher();
   }
 
-  private setupTestListeners() {
-    // Listen for test runs
-    (vscode as any).test.onDidChangeTestRunResults((event: any) => {
-      this.testRunCount++;
-      this.lastTestTime = Date.now();
-
-      let passedTests = 0;
-      let failedTests = 0;
-
-      event.results.forEach((result: { state: any }) => {
-        if (result.state === (vscode as any).TestResultState.Passed) {
-          passedTests++;
-        } else if (result.state === (vscode as any).TestResultState.Failed) {
-          failedTests++;
-        }
-      });
-
-      const allPassed = failedTests === 0 && passedTests > 0;
-
-      console.log(`🧪 Tests: ${passedTests} passed, ${failedTests} failed`);
-
-      // Trigger state change in activity detector
-      this.activityDetector.manualStateChange(
-        allPassed ? 'test_passed' : 'test_failed'
-      );
-
-      // Notify callback
-      this.onTestResult(allPassed, passedTests + failedTests);
-
-      // Auto-reset to productive after 3 seconds
-      setTimeout(() => {
-        this.activityDetector.manualStateChange('productive');
-      }, 3000);
+  private setupTestWatcher(): void {
+    // Watch for test runs in the terminal
+    vscode.window.onDidOpenTerminal(terminal => {
+      console.log('Terminal opened:', terminal.name);
     });
 
-    // Detect when tests are running (before results)
-    (vscode as any).test.onDidStartTestRun((run: any) => {
-      console.log('🧪 Test run started');
-      this.activityDetector.manualStateChange('testing');
+    // Watch for test output
+    vscode.window.onDidWriteTerminalData(event => {
+      const data = event.data.toLowerCase();
+      
+      if (data.includes('test') && data.includes('running')) {
+        this.onTestStart();
+      }
+      
+      if (data.includes('passed') || data.includes('✓')) {
+        this.onTestPass();
+      }
+      
+      if (data.includes('failed') || data.includes('✗')) {
+        this.onTestFail();
+      }
     });
   }
 
-  public getTestRunCount(): number {
-    return this.testRunCount;
+  private onTestStart(): void {
+    console.log('Test run started');
+    this.testRunning = true;
+    this.detector.onTestRun(false); // Set to testing state
   }
 
-  public getLastTestTime(): number {
-    return this.lastTestTime;
+  private onTestPass(): void {
+    if (this.testRunning) {
+      console.log('Tests passed!');
+      this.detector.onTestRun(true);
+      this.testRunning = false;
+    }
+  }
+
+  private onTestFail(): void {
+    if (this.testRunning) {
+      console.log('Tests failed!');
+      this.detector.onTestRun(false);
+      this.testRunning = false;
+    }
+  }
+
+  isTestRunning(): boolean {
+    return this.testRunning;
+  }
+
+  dispose(): void {
+    this.testRunning = false;
   }
 }
