@@ -18,7 +18,16 @@
       {
         "command": "vibe-driven-development.showCompanion",
         "title": "VDD: Show Vibe Companion"
+      },
+      {
+        "command": "vibe-driven-development.changeVibe",
+        "title": "VDD: Change Vibe Mode"
+      },
+      {
+        "command": "vibe-driven-development.toggleMusic",
+        "title": "VDD: Toggle Music"
       }
+
     ],
     "configuration": {
       "title": "Vibe Driven Development",
@@ -28,7 +37,25 @@
           "default": "",
           "description": "Your API key for AI music generation (get one at console.anthropic.com)"
         }
-      }
+      },
+        "vibe-driven-development.defaultVibe": {
+          "type": "string",
+          "enum": ["encouraging", "roasting", "neutral"],
+          "default": "encouraging",
+          "description": "Default companion vibe mode"
+        },
+        "vibe-driven-development.enableMusic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable background music"
+        },
+        "vibe-driven-development.musicMode": {
+          "type": "string",
+          "enum": ["curated", "ai", "strudel", "hybrid"],
+          "default": "hybrid",
+          "description": "Music generation mode"
+        }
+
     }
   },
   "scripts": {
