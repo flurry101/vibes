@@ -18,47 +18,12 @@
       {
         "command": "vibe-driven-development.showCompanion",
         "title": "VDD: Show Vibe Companion"
-      },
-      {
-        "command": "vibe-driven-development.changeVibe",
-        "title": "VDD: Change Vibe Mode"
-      },
-      {
-        "command": "vibe-driven-development.toggleMusic",
-        "title": "VDD: Toggle Music"
       }
-    ],
-    "configuration": {
-      "title": "Vibe Driven Development",
-      "properties": {
-        "vibe-driven-development.geminiAPIkey": {
-          "type": "string",
-          "default": "",
-          "description": "Your Google Gemini API key for AI music generation (get one free at https://makersuite.google.com/app/apikey)"
-        },
-        "vibe-driven-development.defaultVibe": {
-          "type": "string",
-          "enum": ["encouraging", "roasting", "neutral"],
-          "default": "encouraging",
-          "description": "Default companion vibe mode"
-        },
-        "vibe-driven-development.enableMusic": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable background music"
-        },
-        "vibe-driven-development.musicMode": {
-          "type": "string",
-          "enum": ["curated", "ai", "strudel", "hybrid"],
-          "default": "hybrid",
-          "description": "Music generation mode"
-        }
-      }
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
-    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.cjs",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.cjs --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -73,10 +38,10 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.105.0",
-    "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.1",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",

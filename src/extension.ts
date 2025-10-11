@@ -1,5 +1,3 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ActivityDetector } from './detection/activityDetector';
@@ -9,9 +7,6 @@ import { MusicData } from './types';
 let activityDetector: ActivityDetector | undefined;
 let musicEngine: MusicEngine | undefined;
 let currentPanel: vscode.WebviewPanel | undefined;
-
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "vibe-driven-development" is now active!');
@@ -37,12 +32,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
 
-		// 🟢 Initialize Music Engine
 		musicEngine = new MusicEngine((data: MusicData) => {
 			currentPanel?.webview.postMessage(data);
 		});
 
-		// 🟢 Initialize Activity Detector
 		activityDetector = new ActivityDetector((newState) => {
 			console.log('📡 Activity state changed:', newState);
 
@@ -54,7 +47,6 @@ export function activate(context: vscode.ExtensionContext) {
 			musicEngine?.playStateMusic(newState);
 		});
 
-		// 🟢 Handle messages from Webview
 		currentPanel.webview.onDidReceiveMessage(
 			message => {
 				switch (message.command) {
@@ -63,11 +55,13 @@ export function activate(context: vscode.ExtensionContext) {
 						musicEngine?.setVibe(message.vibe);
 						break;
 					case 'requestHint':
-						// TODO: AI hint generation
 						currentPanel?.webview.postMessage({
 							command: 'hint',
 							text: 'Try breaking this into smaller functions!'
 						});
+						break;
+					case 'musicStatus':
+						console.log('Music status:', message.status);
 						break;
 				}
 			},
@@ -83,26 +77,130 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(showCompanion);
-
-	// Auto-show on startup
 	vscode.commands.executeCommand('vibe-driven-development.showCompanion');
 }
 
 function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): string {
 	return `<!DOCTYPE html>
 	<html lang="en">
-	
 	<head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-		<title>VibeCode</title>
+		<title>Vibe Companion</title>
 		<style>
-			/* ... your existing styles ... */
+			* { margin: 0; padding: 0; box-sizing: border-box; }
+			body {
+				font-family: var(--vscode-font-family);
+				color: var(--vscode-foreground);
+				background: var(--vscode-editor-background);
+				padding: 20px;
+			}
+			.container { 
+				max-width: 400px; 
+				margin: 0 auto; 
+				text-align: center; 
+			}
+			h1 { 
+				margin-bottom: 20px; 
+				font-size: 24px; 
+			}
+			.vibe-selector {
+				display: flex;
+				gap: 10px;
+				margin: 20px 0;
+				justify-content: center;
+			}
+			.vibe-btn {
+				padding: 12px 20px;
+				border: 2px solid var(--vscode-button-border);
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+				cursor: pointer;
+				border-radius: 6px;
+				font-size: 14px;
+				transition: all 0.2s;
+			}
+			.vibe-btn:hover {
+				background: var(--vscode-button-hoverBackground);
+			}
+			.vibe-btn.active {
+				background: var(--vscode-button-secondaryBackground);
+				border-color: var(--vscode-focusBorder);
+			}
+			.companion {
+				font-size: 80px;
+				margin: 30px 0;
+				animation: float 3s ease-in-out infinite;
+			}
+			@keyframes float {
+				0%, 100% { transform: translateY(0px); }
+				50% { transform: translateY(-10px); }
+			}
+			.message {
+				font-size: 16px;
+				margin: 20px 0;
+				padding: 15px;
+				background: var(--vscode-editor-inactiveSelectionBackground);
+				border-radius: 8px;
+				min-height: 60px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+			.state {
+				font-size: 12px;
+				color: var(--vscode-descriptionForeground);
+				margin-top: 10px;
+			}
+			.music-status {
+				margin-top: 10px;
+				padding: 10px;
+				background: var(--vscode-input-background);
+				border-radius: 4px;
+				font-size: 11px;
+				color: var(--vscode-descriptionForeground);
+			}
+			.volume-control {
+				margin-top: 15px;
+			}
+			.volume-control label {
+				display: block;
+				margin-bottom: 5px;
+				font-size: 12px;
+			}
+			.volume-control input {
+				width: 200px;
+			}
 		</style>
 	</head>
 	<body>
-		<!-- ... your existing HTML ... -->
+		<div class="container">
+			<h1>🎵 Vibe Companion</h1>
+			
+			<div class="vibe-selector">
+				<button class="vibe-btn active" data-vibe="encouraging">😊 Encouraging</button>
+				<button class="vibe-btn" data-vibe="roasting">😏 Roasting</button>
+				<button class="vibe-btn" data-vibe="neutral">🤖 Neutral</button>
+			</div>
+
+			<div class="companion" id="companion">😊</div>
+			
+			<div class="message" id="message">
+				Ready to vibe! Start coding...
+			</div>
+
+			<div class="state" id="state">State: idle</div>
+			
+			<div class="music-status" id="musicStatus">
+				🎵 Click a vibe button to start music
+			</div>
+
+			<div class="volume-control">
+				<label for="volume">Volume</label>
+				<input type="range" id="volume" min="-30" max="0" value="-12" step="1">
+			</div>
+		</div>
 
 		<script>
 			const vscode = acquireVsCodeApi();
@@ -113,30 +211,41 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			let currentLoop = null;
 			let synth = null;
 
-			// 🎵 MUSIC SETUP
+			function updateMusicStatus(status) {
+				document.getElementById('musicStatus').textContent = '🎵 ' + status;
+				vscode.postMessage({ command: 'musicStatus', status });
+			}
+
 			async function initMusic() {
 				if (musicInitialized) return;
 				
-				await Tone.start();
-				console.log('🎵 Audio context started');
-				
-				// Create synth
-				synth = new Tone.PolySynth(Tone.Synth, {
-					oscillator: { type: 'sine' },
-					envelope: {
-						attack: 0.1,
-						decay: 0.2,
-						sustain: 0.3,
-						release: 1
-					}
-				}).toDestination();
-				
-				synth.volume.value = -12; // Quieter background music
-				
-				musicInitialized = true;
+				try {
+					updateMusicStatus('Initializing...');
+					await Tone.start();
+					console.log('🎵 Audio context started');
+					
+					synth = new Tone.PolySynth(Tone.Synth, {
+						oscillator: { type: 'sine' },
+						envelope: {
+							attack: 0.1,
+							decay: 0.2,
+							sustain: 0.3,
+							release: 1
+						}
+					}).toDestination();
+					
+					synth.volume.value = -12;
+					musicInitialized = true;
+					updateMusicStatus('Music ready!');
+					
+					// Start playing immediately
+					playMusicForState(currentState);
+				} catch (error) {
+					console.error('Failed to initialize music:', error);
+					updateMusicStatus('Error: ' + error.message);
+				}
 			}
 
-			// 🎵 MUSIC PATTERNS
 			const musicPatterns = {
 				idle: {
 					notes: ['C4', 'E4', 'G4'],
@@ -160,39 +269,52 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				}
 			};
 
-			// 🎵 PLAY MUSIC FOR STATE
 			function playMusicForState(state) {
 				if (!musicInitialized) {
-					initMusic();
 					return;
 				}
 
-				// Stop current loop
-				if (currentLoop) {
-					currentLoop.stop();
-					currentLoop.dispose();
+				try {
+					// Stop current loop
+					if (currentLoop) {
+						currentLoop.stop();
+						currentLoop.dispose();
+						currentLoop = null;
+					}
+
+					const pattern = musicPatterns[state] || musicPatterns.idle;
+					Tone.Transport.bpm.value = pattern.tempo;
+
+					let index = 0;
+					currentLoop = new Tone.Loop(time => {
+						if (synth) {
+							synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
+						}
+						index = (index + 1) % pattern.notes.length;
+					}, pattern.interval).start(0);
+
+					Tone.Transport.start();
+					updateMusicStatus('Playing: ' + state + ' (' + pattern.tempo + ' BPM)');
+				} catch (error) {
+					console.error('Error playing music:', error);
+					updateMusicStatus('Playback error: ' + error.message);
 				}
-
-				const pattern = musicPatterns[state] || musicPatterns.idle;
-				Tone.Transport.bpm.value = pattern.tempo;
-
-				let index = 0;
-				currentLoop = new Tone.Loop(time => {
-					synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
-					index = (index + 1) % pattern.notes.length;
-				}, pattern.interval).start(0);
-
-				Tone.Transport.start();
 			}
 
-			// Vibe emojis
+			// Volume control
+			document.getElementById('volume').addEventListener('input', (e) => {
+				if (synth) {
+					synth.volume.value = parseInt(e.target.value);
+					updateMusicStatus('Volume: ' + e.target.value + ' dB');
+				}
+			});
+
 			const vibeEmojis = {
 				encouraging: '😊',
 				roasting: '😏',
 				neutral: '🤖'
 			};
 
-			// Messages
 			const messages = {
 				encouraging: {
 					idle: "Ready when you are! 💪",
@@ -220,20 +342,16 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				}
 			};
 
-			// Update display
 			function updateDisplay() {
 				document.getElementById('companion').textContent = vibeEmojis[currentVibe];
 				document.getElementById('message').textContent = messages[currentVibe][currentState];
 				document.getElementById('state').textContent = 'State: ' + currentState;
 			}
 
-			// Vibe buttons - ADD MUSIC INIT ON CLICK
 			document.querySelectorAll('.vibe-btn').forEach(btn => {
 				btn.addEventListener('click', async () => {
-					// Initialize music on first interaction
 					if (!musicInitialized) {
 						await initMusic();
-						playMusicForState(currentState);
 					}
 
 					document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
@@ -249,7 +367,6 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				});
 			});
 
-			// Listen for messages from extension
 			window.addEventListener('message', event => {
 				const message = event.data;
 				
@@ -271,7 +388,6 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 	</html>`;
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {
 	activityDetector?.dispose();
 	musicEngine?.dispose();
