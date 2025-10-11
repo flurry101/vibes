@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ActivityDetector } from './detection/activityDetector';
+import { ActivityDetector } from './detection/ActivityDetector';
 import { MusicEngine } from './music/musicEngine';
 import { MusicData } from './types';
 
