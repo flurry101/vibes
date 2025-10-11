@@ -8,6 +8,7 @@ export class ActivityDetector {
   private idleTimeout: NodeJS.Timeout | null = null;
   private keystrokeTimes: number[] = [];
   private buildingDetected: boolean = false;
+  private isPaused: boolean = false;
 
   constructor(private onStateChange: (state: ActivityState) => void) {
     this.startDetection();
@@ -76,8 +77,13 @@ export class ActivityDetector {
   }
 
   private updateState(forcedState?: ActivityState) {
+    // Don't update state if paused
+    if (this.isPaused) {
+      return;
+    }
+
     const newState = forcedState || this.detectState();
-    
+
     if (newState !== this.currentState) {
       this.currentState = newState;
       this.onStateChange(newState);
@@ -139,6 +145,18 @@ export class ActivityDetector {
   // Test runner detection - need to watch for test events in the terminal/output
   onTestRun(passed: boolean) {
     this.updateState(passed ? 'test_passed' : 'test_failed');
+  }
+
+  public pause(): void {
+    console.log('Pausing activity detection');
+    this.isPaused = true;
+  }
+
+  public resume(): void {
+    console.log('Resuming activity detection');
+    this.isPaused = false;
+    // Trigger state update to resume normal operation
+    this.updateState();
   }
 
   public getCurrentState(): ActivityState {

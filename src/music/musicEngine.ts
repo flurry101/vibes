@@ -4,6 +4,7 @@ export class MusicEngine {
   private callback: (data: MusicData) => void;
   private currentVibe: VibeMode = 'encouraging';
   private isInitialized: boolean = false;
+  private isPaused: boolean = false;
   
   constructor(callback: (data: MusicData) => void) {
     this.callback = callback;
@@ -19,11 +20,16 @@ export class MusicEngine {
 
   async playStateMusic(state: ActivityState): Promise<void> {
     console.log('Playing music for state:', state);
-    
+
     if (!this.isInitialized) {
       await this.initialize();
     }
-    
+
+    // Don't play music if paused
+    if (this.isPaused) {
+      return;
+    }
+
     // Send message to webview to actually play music
     this.callback({
       command: 'playMusic',
@@ -40,6 +46,21 @@ export class MusicEngine {
       command: 'vibeChanged',
       vibe: vibe
     });
+  }
+
+  pause(): void {
+    console.log('Pausing music');
+    this.isPaused = true;
+    this.callback({
+      command: 'pauseMusic'
+    });
+  }
+
+  resume(): void {
+    console.log('Resuming music');
+    this.isPaused = false;
+    // Resume with current state if available
+    // The activity detector will trigger new music if needed
   }
 
   stop(): void {

@@ -158,4 +158,57 @@ export class StrudelGenerator {
   getCurrentPattern(): string {
     return this.currentPattern;
   }
+
+  // Methods for real-time parameter changes
+  changeBeats(beatType: string): string {
+    // Update beat patterns based on type
+    const beatConfigs: Record<string, { notes: string[], pattern: string, duration: string }> = {
+      'kick': { notes: ['C2'], pattern: 'kick', duration: '4n' },
+      'snare': { notes: ['D2'], pattern: 'snare', duration: '4n' },
+      'hihat': { notes: ['F#2'], pattern: 'hihat', duration: '8n' },
+      'clap': { notes: ['Bb2'], pattern: 'clap', duration: '4n' },
+      'tom': { notes: ['A2', 'E2'], pattern: 'tom', duration: '4n' }
+    };
+
+    const config = beatConfigs[beatType] || beatConfigs['kick'];
+    const pattern = `note("${config.notes.join(' ')}").${config.pattern}().${config.duration}`;
+    this.currentPattern = pattern;
+    return pattern;
+  }
+
+  changeRhythm(rhythmType: string): string {
+    // Update rhythm patterns
+    const rhythmConfigs: Record<string, { pattern: string, duration: string }> = {
+      'straight': { pattern: 'straight', duration: '4n' },
+      'swing': { pattern: 'swing', duration: '4nt' },
+      'shuffle': { pattern: 'shuffle', duration: '4nt' },
+      'triplet': { pattern: 'triplet', duration: '8n' },
+      'polyrhythm': { pattern: 'polyrhythm', duration: '4n' }
+    };
+
+    const config = rhythmConfigs[rhythmType] || rhythmConfigs['straight'];
+    // Apply rhythm transformation to current pattern
+    this.currentPattern = this.currentPattern + `.${config.pattern}()`;
+    return this.currentPattern;
+  }
+
+  changeSpeed(speedType: string): number {
+    // Update tempo based on speed type
+    const speedConfigs: Record<string, number> = {
+      'slow': 80,
+      'medium': 120,
+      'fast': 160,
+      'very-fast': 200
+    };
+
+    const newTempo = speedConfigs[speedType] || 120;
+    // Update current config tempo
+    if (this.currentState && this.currentVibe) {
+      const configKey = `${this.currentState}-${this.currentVibe}`;
+      if (this.musicConfigs[configKey]) {
+        this.musicConfigs[configKey].tempo = newTempo;
+      }
+    }
+    return newTempo;
+  }
 }

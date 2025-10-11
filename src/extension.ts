@@ -4,6 +4,7 @@ import { ActivityDetector } from './detection/ActivityDetector';
 import { MusicEngine } from './music/musicEngine';
 import { DialogueManager, DialogueContext } from './music/dialogueManager';
 import { TestRunner } from './detection/TestRunner';
+import { StrudelGenerator } from './music/StrudelGenerator';
 import { MusicData, ActivityState, VibeMode, MusicMode } from './types';
 import { STATE_PLAYLISTS } from './music/curated';
 
@@ -11,12 +12,15 @@ let activityDetector: ActivityDetector | undefined;
 let musicEngine: MusicEngine | undefined;
 let dialogueManager: DialogueManager | undefined;
 let testRunner: TestRunner | undefined;
+let strudelGenerator: StrudelGenerator | undefined;
 let currentPanel: vscode.WebviewPanel | undefined;
 let sessionStartTime: number = Date.now();
 let statusBarItem: vscode.StatusBarItem | undefined;
 let avatarVisible: boolean = true;
 let avatarMinimized: boolean = false;
 let musicMode: MusicMode = 'automatic';
+let isPaused: boolean = false;
+let currentStateStartTime: number = Date.now();
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Vibe-Driven Development extension activated! 🎵');
@@ -67,13 +71,16 @@ export function activate(context: vscode.ExtensionContext) {
 		// Send initial state
 		currentPanel.webview.postMessage({
 			command: 'init',
-			musicMode: musicMode
+			musicMode: musicMode,
+			isPaused: isPaused
 		});
 
 		// Initialize components
 		musicEngine = new MusicEngine((data: MusicData) => {
 			currentPanel?.webview.postMessage(data);
 		});
+
+		strudelGenerator = new StrudelGenerator();
 
 		dialogueManager = new DialogueManager(true, 'rare');
 
@@ -82,6 +89,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Update status bar based on state
 			updateStatusBar(newState);
+
+			// Reset state start time when state changes
+			currentStateStartTime = Date.now();
 
 			currentPanel?.webview.postMessage({
 				command: 'stateChanged',
@@ -92,6 +102,9 @@ export function activate(context: vscode.ExtensionContext) {
 				command: 'updateAvatarState',
 				state: newState
 			});
+
+			// Send state message
+			sendStateMessage(newState);
 
 			if (musicMode === 'automatic') {
 				musicEngine?.playStateMusic(newState);
@@ -109,6 +122,15 @@ export function activate(context: vscode.ExtensionContext) {
 		if (activityDetector) {
 			testRunner = new TestRunner(activityDetector);
 		}
+
+		// Update duration display every second
+		setInterval(() => {
+			const duration = Math.floor((Date.now() - currentStateStartTime) / 1000);
+			currentPanel?.webview.postMessage({
+				command: 'updateDuration',
+				duration: duration
+			});
+		}, 1000);
 
 		// Handle messages from Webview
 		currentPanel.webview.onDidReceiveMessage(
@@ -152,18 +174,33 @@ export function activate(context: vscode.ExtensionContext) {
 						// This is sent from webview, handle in extension
 						break;
 					case 'changeBeats':
+						if (strudelGenerator) {
+							const pattern = strudelGenerator.changeBeats(message.value);
+							console.log('New beat pattern:', pattern);
+						}
 						currentPanel?.webview.postMessage({
-							command: 'changeBeats'
+							command: 'changeBeats',
+							value: message.value
 						});
 						break;
 					case 'changeRhythm':
+						if (strudelGenerator) {
+							const pattern = strudelGenerator.changeRhythm(message.value);
+							console.log('New rhythm pattern:', pattern);
+						}
 						currentPanel?.webview.postMessage({
-							command: 'changeRhythm'
+							command: 'changeRhythm',
+							value: message.value
 						});
 						break;
 					case 'changeSpeed':
+						if (strudelGenerator) {
+							const newTempo = strudelGenerator.changeSpeed(message.value);
+							console.log('New tempo:', newTempo);
+						}
 						currentPanel?.webview.postMessage({
-							command: 'changeSpeed'
+							command: 'changeSpeed',
+							value: message.value
 						});
 						break;
 					case 'startMusic':
@@ -280,6 +317,7 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
 	activityDetector?.dispose();
 	musicEngine?.dispose();
+	strudelGenerator?.dispose();
 	testRunner?.dispose();
 	currentPanel?.dispose();
 }
@@ -337,6 +375,52 @@ async function handleDialogue(state: ActivityState) {
 	}
 }
 
+function sendStateMessage(state: ActivityState) {
+	// Get current vibe from music engine
+	const currentVibe = musicEngine?.['currentVibe'] || 'encouraging';
+
+	const messages: Record<string, Record<string, string>> = {
+		encouraging: {
+			idle: "Ready when you are! 💪",
+			productive: "You're crushing it! 🔥",
+			stuck: "Take a breath, you got this! 🌟",
+			procrastinating: "Let's get back to coding! 💪",
+			testing: "Fingers crossed! 🤞",
+			building: "Building something awesome! 🔨",
+			test_passed: "YES! I knew you could do it! 🎉",
+			test_failed: "It's okay, we'll fix it together! 💙"
+		},
+		roasting: {
+			idle: "gonna code or just stare? 👀",
+			productive: "wow actually working for once",
+			stuck: "stackoverflow isn't gonna solve this one chief",
+			procrastinating: "still procrastinating huh",
+			testing: "let's see how badly this fails",
+			building: "finally building something?",
+			test_passed: "finally lmao 💀",
+			test_failed: "skill issue fr fr"
+		},
+		neutral: {
+			idle: "System ready.",
+			productive: "Optimal productivity detected.",
+			stuck: "Analyzing bottleneck...",
+			procrastinating: "Idle state detected.",
+			testing: "Running tests...",
+			building: "Compilation in progress.",
+			test_passed: "Tests passing. Continuing.",
+			test_failed: "Test failure. Debugging recommended."
+		}
+	};
+
+	const vibeMessages = messages[currentVibe] || messages.encouraging;
+	const message = vibeMessages[state] || vibeMessages.idle;
+
+	currentPanel?.webview.postMessage({
+		command: 'showStateMessage',
+		message: message
+	});
+}
+
 function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview, imageUris: Record<string, vscode.Uri>): string {
 	return `<!DOCTYPE html>
 	<html lang="en">
@@ -385,8 +469,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			.container.compact .vibe-selector,
 			.container.compact .message,
 			.container.compact .state,
-			.container.compact .controls,
-			.container.compact .keyboard-shortcuts {
+			.container.compact .controls {
 				display: none;
 			}
 
@@ -688,6 +771,12 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				color: var(--vscode-descriptionForeground);
 				margin-top: 10px;
 			}
+
+			.duration {
+				font-size: 12px;
+				color: var(--vscode-descriptionForeground);
+				margin-top: 5px;
+			}
 			
 			.controls {
 				margin: 30px 0;
@@ -718,6 +807,26 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			
 			.control-btn:hover {
 				background: var(--vscode-button-hoverBackground);
+			}
+
+			.control-select {
+				padding: 10px 20px;
+				border: 1px solid var(--vscode-button-border);
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+				cursor: pointer;
+				border-radius: 4px;
+				font-size: 14px;
+				flex: 1;
+				min-width: 0;
+			}
+
+			.control-select:hover {
+				background: var(--vscode-button-hoverBackground);
+			}
+
+			.control-select:focus {
+				outline: 1px solid var(--vscode-focusBorder);
 			}
 			
 			.keyboard-shortcuts {
@@ -787,6 +896,10 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				State: idle
 			</div>
 
+			<div class="duration" id="duration">
+				Duration: 0s
+			</div>
+
 			<div class="controls">
 				<div class="control-row">
 					<button class="control-btn" id="startMusicBtn">🎵 Start Music</button>
@@ -794,42 +907,41 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				</div>
 				<div class="control-row">
 					<button class="control-btn" id="pauseBtn">⏸️ Pause</button>
-					<button class="control-btn" id="themeBtn">🎨 Theme</button>
+					<select class="control-select" id="themeSelect">
+						<option value="default">🎨 Theme</option>
+						<option value="cyberpunk">Cyberpunk</option>
+						<option value="cozy">Cozy</option>
+						<option value="minimal">Minimal</option>
+						<option value="neon">Neon</option>
+					</select>
 				</div>
 				<div class="control-row">
-					<button class="control-btn" id="changeBeatsBtn">🥁 Beats</button>
-					<button class="control-btn" id="changeRhythmBtn">🎼 Rhythm</button>
-					<button class="control-btn" id="changeSpeedBtn">⚡ Speed</button>
+					<select class="control-select" id="beatsSelect">
+						<option value="default">🥁 Beats</option>
+						<option value="kick">Kick</option>
+						<option value="snare">Snare</option>
+						<option value="hihat">Hi-Hat</option>
+						<option value="clap">Clap</option>
+						<option value="tom">Tom</option>
+					</select>
+					<select class="control-select" id="rhythmSelect">
+						<option value="default">🎼 Rhythm</option>
+						<option value="straight">Straight</option>
+						<option value="swing">Swing</option>
+						<option value="shuffle">Shuffle</option>
+						<option value="triplet">Triplet</option>
+						<option value="polyrhythm">Polyrhythm</option>
+					</select>
+					<select class="control-select" id="speedSelect">
+						<option value="default">⚡ Speed</option>
+						<option value="slow">Slow</option>
+						<option value="medium">Medium</option>
+						<option value="fast">Fast</option>
+						<option value="very-fast">Very Fast</option>
+					</select>
 				</div>
 			</div>
 
-			<div class="keyboard-shortcuts">
-				<div style="font-weight: bold; margin-bottom: 10px;">⌨️ Keyboard Shortcuts</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+U</span></span>
-					<span>Toggle UI mode</span>
-				</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+T</span></span>
-					<span>Toggle music mode</span>
-				</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+S</span></span>
-					<span>Switch state</span>
-				</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+P</span></span>
-					<span>Pause animations</span>
-				</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+C</span></span>
-					<span>Customize theme</span>
-				</div>
-				<div class="shortcut-row">
-					<span><span class="shortcut-key">Ctrl+Alt+R</span></span>
-					<span>Reset position</span>
-				</div>
-			</div>
 		</div>
 
 		<script>
@@ -975,22 +1087,34 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				}
 			}
 
-			function changeBeats() {
-				// Implement beat changes
-				vscode.postMessage({ command: 'showQuote', quote: 'Beats changed!' });
+			function changeBeats(beatType) {
+				// Implement beat changes with Strudel
+				console.log('Changing beats to:', beatType);
+				// This would integrate with Strudel to change beat patterns
+				vscode.postMessage({ command: 'showQuote', quote: 'Beats changed to ' + beatType + '!' });
 			}
 
-			function changeRhythm() {
-				// Implement rhythm changes
-				vscode.postMessage({ command: 'showQuote', quote: 'Rhythm changed!' });
+			function changeRhythm(rhythmType) {
+				// Implement rhythm changes with Strudel
+				console.log('Changing rhythm to:', rhythmType);
+				// This would integrate with Strudel to change rhythm patterns
+				vscode.postMessage({ command: 'showQuote', quote: 'Rhythm changed to ' + rhythmType + '!' });
 			}
 
-			function changeSpeed() {
+			function changeSpeed(speedType) {
 				// Implement speed changes
-				if (Tone.Transport.bpm) {
-					Tone.Transport.bpm.value = (Tone.Transport.bpm.value + 20) % 200 || 120;
+				let newBpm = 120; // default
+				switch (speedType) {
+					case 'slow': newBpm = 80; break;
+					case 'medium': newBpm = 120; break;
+					case 'fast': newBpm = 160; break;
+					case 'very-fast': newBpm = 200; break;
 				}
-				vscode.postMessage({ command: 'showQuote', quote: 'Speed changed!' });
+
+				if (Tone.Transport.bpm) {
+					Tone.Transport.bpm.value = newBpm;
+				}
+				vscode.postMessage({ command: 'showQuote', quote: 'Speed changed to ' + speedType + '!' });
 			}
 
 			function updatePersonalityMessage(vibe) {
@@ -1042,30 +1166,44 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 
 				document.getElementById('pauseBtn').addEventListener('click', (e) => {
 					e.stopPropagation();
-					isPaused = !isPaused;
-					document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
 					vscode.postMessage({ command: 'pauseAnimations' });
 				});
 
-				document.getElementById('themeBtn').addEventListener('click', (e) => {
+				document.getElementById('themeSelect').addEventListener('change', (e) => {
 					e.stopPropagation();
-					vscode.postMessage({ command: 'customizeAvatar' });
+					const value = e.target.value;
+					if (value !== 'default') {
+						vscode.postMessage({ command: 'changeTheme', theme: value });
+						e.target.value = 'default'; // Reset to default
+					}
 				});
 
 				// Strudel controls
-				document.getElementById('changeBeatsBtn').addEventListener('click', (e) => {
+				document.getElementById('beatsSelect').addEventListener('change', (e) => {
 					e.stopPropagation();
-					vscode.postMessage({ command: 'changeBeats' });
+					const value = e.target.value;
+					if (value !== 'default') {
+						vscode.postMessage({ command: 'changeBeats', value: value });
+						e.target.value = 'default'; // Reset to default
+					}
 				});
 
-				document.getElementById('changeRhythmBtn').addEventListener('click', (e) => {
+				document.getElementById('rhythmSelect').addEventListener('change', (e) => {
 					e.stopPropagation();
-					vscode.postMessage({ command: 'changeRhythm' });
+					const value = e.target.value;
+					if (value !== 'default') {
+						vscode.postMessage({ command: 'changeRhythm', value: value });
+						e.target.value = 'default'; // Reset to default
+					}
 				});
 
-				document.getElementById('changeSpeedBtn').addEventListener('click', (e) => {
+				document.getElementById('speedSelect').addEventListener('change', (e) => {
 					e.stopPropagation();
-					vscode.postMessage({ command: 'changeSpeed' });
+					const value = e.target.value;
+					if (value !== 'default') {
+						vscode.postMessage({ command: 'changeSpeed', value: value });
+						e.target.value = 'default'; // Reset to default
+					}
 				});
 			});
 
@@ -1077,6 +1215,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					case 'init':
 						musicMode = message.musicMode;
 						document.getElementById('musicModeBtn').textContent = musicMode === 'automatic' ? '🎵 Auto' : '🎶 Playlist';
+						// Initialize pause button state
+						isPaused = message.isPaused || false;
+						document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
 						break;
 					case 'stateChanged':
 						updateAvatarState(message.state);
@@ -1086,6 +1227,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 						break;
 					case 'playMusic':
 						playMusic(message.state, message.vibe);
+						break;
+					case 'pauseMusic':
+						stopMusic();
 						break;
 					case 'stopMusic':
 						stopMusic();
@@ -1107,7 +1251,20 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 						}
 						break;
 					case 'pauseAnimations':
+						isPaused = !isPaused;
+						if (isPaused) {
+							musicEngine?.pause();
+							activityDetector?.pause();
+						} else {
+							musicEngine?.resume();
+							activityDetector?.resume();
+						}
 						document.body.classList.toggle('paused');
+						// Send pause state to webview
+						currentPanel?.webview.postMessage({
+							command: 'pauseStateChanged',
+							isPaused: isPaused
+						});
 						break;
 					case 'changeTheme':
 						document.body.classList.remove('theme-' + currentTheme);
@@ -1121,6 +1278,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					case 'showQuote':
 						document.getElementById('message').textContent = message.quote;
 						break;
+					case 'showStateMessage':
+						document.getElementById('message').textContent = message.message;
+						break;
 					case 'hint':
 						document.getElementById('message').textContent = message.text;
 						break;
@@ -1128,16 +1288,29 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 						document.getElementById('message').textContent = 'Metrics: ' + JSON.stringify(message.data);
 						break;
 					case 'changeBeats':
-						changeBeats();
+						changeBeats(message.value);
 						break;
 					case 'changeRhythm':
-						changeRhythm();
+						changeRhythm(message.value);
 						break;
 					case 'changeSpeed':
-						changeSpeed();
+						changeSpeed(message.value);
+						break;
+					case 'updateDuration':
+						const durationElement = document.getElementById('duration');
+						if (durationElement) {
+							const seconds = message.duration;
+							const minutes = Math.floor(seconds / 60);
+							const remainingSeconds = seconds % 60;
+							durationElement.textContent = 'Duration: ' + minutes + 'm ' + remainingSeconds + 's';
+						}
 						break;
 					case 'toggleUI':
 						toggleCompact();
+						break;
+					case 'pauseStateChanged':
+						isPaused = message.isPaused;
+						document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
 						break;
 				}
 			});
