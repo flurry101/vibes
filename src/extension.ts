@@ -98,91 +98,92 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 		<title>VibeCode</title>
 		<style>
-			* { margin: 0; padding: 0; box-sizing: border-box; }
-			body {
-				font-family: var(--vscode-font-family);
-				color: var(--vscode-foreground);
-				background: var(--vscode-editor-background);
-				padding: 20px;
-			}
-			.container { max-width: 400px; margin: 0 auto; text-align: center; }
-			h1 { margin-bottom: 20px; font-size: 24px; }
-			.vibe-selector {
-				display: flex;
-				gap: 10px;
-				margin: 20px 0;
-				justify-content: center;
-			}
-			.vibe-btn {
-				padding: 12px 20px;
-				border: 2px solid var(--vscode-button-border);
-				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
-				cursor: pointer;
-				border-radius: 6px;
-				font-size: 14px;
-				transition: all 0.2s;
-			}
-			.vibe-btn:hover {
-				background: var(--vscode-button-hoverBackground);
-			}
-			.vibe-btn.active {
-				background: var(--vscode-button-secondaryBackground);
-				border-color: var(--vscode-focusBorder);
-			}
-			.companion {
-				font-size: 80px;
-				margin: 30px 0;
-				animation: float 3s ease-in-out infinite;
-			}
-			@keyframes float {
-				0%, 100% { transform: translateY(0px); }
-				50% { transform: translateY(-10px); }
-			}
-			.message {
-				font-size: 16px;
-				margin: 20px 0;
-				padding: 15px;
-				background: var(--vscode-editor-inactiveSelectionBackground);
-				border-radius: 8px;
-				min-height: 60px;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-			}
-			.state {
-				font-size: 12px;
-				color: var(--vscode-descriptionForeground);
-				margin-top: 10px;
-			}
+			/* ... your existing styles ... */
 		</style>
 	</head>
 	<body>
-		<div class="container">
-			<h1>🎵 Vibe Companion</h1>
-			
-			<div class="vibe-selector">
-				<button class="vibe-btn active" data-vibe="encouraging">😊 Encouraging</button>
-				<button class="vibe-btn" data-vibe="roasting">😏 Roasting</button>
-				<button class="vibe-btn" data-vibe="neutral">🤖 Neutral</button>
-			</div>
-
-			<div class="companion" id="companion">😊</div>
-			
-			<div class="message" id="message">
-				Ready to vibe! Start coding...
-			</div>
-
-			<div class="state" id="state">
-				State: idle
-			</div>
-		</div>
+		<!-- ... your existing HTML ... -->
 
 		<script>
 			const vscode = acquireVsCodeApi();
 			
 			let currentVibe = 'encouraging';
 			let currentState = 'idle';
+			let musicInitialized = false;
+			let currentLoop = null;
+			let synth = null;
+
+			// 🎵 MUSIC SETUP
+			async function initMusic() {
+				if (musicInitialized) return;
+				
+				await Tone.start();
+				console.log('🎵 Audio context started');
+				
+				// Create synth
+				synth = new Tone.PolySynth(Tone.Synth, {
+					oscillator: { type: 'sine' },
+					envelope: {
+						attack: 0.1,
+						decay: 0.2,
+						sustain: 0.3,
+						release: 1
+					}
+				}).toDestination();
+				
+				synth.volume.value = -12; // Quieter background music
+				
+				musicInitialized = true;
+			}
+
+			// 🎵 MUSIC PATTERNS
+			const musicPatterns = {
+				idle: {
+					notes: ['C4', 'E4', 'G4'],
+					interval: '2n',
+					tempo: 60
+				},
+				productive: {
+					notes: ['C4', 'D4', 'E4', 'G4', 'A4', 'C5'],
+					interval: '8n',
+					tempo: 120
+				},
+				stuck: {
+					notes: ['C4', 'D4', 'C4'],
+					interval: '4n',
+					tempo: 80
+				},
+				testing: {
+					notes: ['C4', 'E4', 'G4', 'C5'],
+					interval: '4n',
+					tempo: 100
+				}
+			};
+
+			// 🎵 PLAY MUSIC FOR STATE
+			function playMusicForState(state) {
+				if (!musicInitialized) {
+					initMusic();
+					return;
+				}
+
+				// Stop current loop
+				if (currentLoop) {
+					currentLoop.stop();
+					currentLoop.dispose();
+				}
+
+				const pattern = musicPatterns[state] || musicPatterns.idle;
+				Tone.Transport.bpm.value = pattern.tempo;
+
+				let index = 0;
+				currentLoop = new Tone.Loop(time => {
+					synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
+					index = (index + 1) % pattern.notes.length;
+				}, pattern.interval).start(0);
+
+				Tone.Transport.start();
+			}
 
 			// Vibe emojis
 			const vibeEmojis = {
@@ -197,9 +198,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					idle: "Ready when you are! 💪",
 					productive: "You're crushing it! 🔥",
 					stuck: "Take a breath, you got this! 🌟",
-					procrastinating: "Let's get back to it! 💪",
 					testing: "Fingers crossed! 🤞",
-					building: "Building something awesome! 🏗️",
 					test_passed: "YES! I knew you could do it! 🎉",
 					test_failed: "It's okay, we'll fix it together! 💙"
 				},
@@ -207,9 +206,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					idle: "gonna code or just stare? 👀",
 					productive: "wow actually working for once",
 					stuck: "stackoverflow isn't gonna solve this one chief",
-					procrastinating: "netflix break over yet?",
 					testing: "let's see how badly this fails",
-					building: "probably gonna break in prod",
 					test_passed: "finally lmao 💀",
 					test_failed: "skill issue fr fr"
 				},
@@ -217,9 +214,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					idle: "System ready.",
 					productive: "Optimal productivity detected.",
 					stuck: "Analyzing bottleneck...",
-					procrastinating: "Idle time detected.",
 					testing: "Running tests...",
-					building: "Build in progress...",
 					test_passed: "Tests passing. Continuing.",
 					test_failed: "Test failure. Debugging recommended."
 				}
@@ -232,9 +227,15 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				document.getElementById('state').textContent = 'State: ' + currentState;
 			}
 
-			// Vibe buttons
+			// Vibe buttons - ADD MUSIC INIT ON CLICK
 			document.querySelectorAll('.vibe-btn').forEach(btn => {
-				btn.addEventListener('click', () => {
+				btn.addEventListener('click', async () => {
+					// Initialize music on first interaction
+					if (!musicInitialized) {
+						await initMusic();
+						playMusicForState(currentState);
+					}
+
 					document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
 					btn.classList.add('active');
 					
@@ -256,9 +257,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					case 'stateChanged':
 						currentState = message.state;
 						updateDisplay();
+						playMusicForState(currentState);
 						break;
 					case 'hint':
-						// TODO: show hint
 						console.log('Hint:', message.text);
 						break;
 				}
