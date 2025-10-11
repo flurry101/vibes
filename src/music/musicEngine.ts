@@ -1,4 +1,4 @@
-import { MusicData, ActivityState, VibeMode } from '../types.js';
+import { MusicData, ActivityState, VibeMode } from '../types';
 
 export class MusicEngine {
   private callback: (data: MusicData) => void;

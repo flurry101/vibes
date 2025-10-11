@@ -1,4 +1,4 @@
-import { ActivityState, MusicSource } from '../types.js';
+import { ActivityState, MusicSource } from '../types';
 
 export const CURATED_MUSIC: MusicSource[] = [
   {
