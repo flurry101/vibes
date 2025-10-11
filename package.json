@@ -27,7 +27,6 @@
         "command": "vibe-driven-development.toggleMusic",
         "title": "VDD: Toggle Music"
       }
-
     ],
     "configuration": {
       "title": "Vibe Driven Development",
@@ -35,9 +34,8 @@
         "vibe-driven-development.geminiAPIkey": {
           "type": "string",
           "default": "",
-          "description": "Your API key for AI music generation (get one at console.anthropic.com)"
-        }
-      },
+          "description": "Your Google Gemini API key for AI music generation (get one free at https://makersuite.google.com/app/apikey)"
+        },
         "vibe-driven-development.defaultVibe": {
           "type": "string",
           "enum": ["encouraging", "roasting", "neutral"],
@@ -55,7 +53,7 @@
           "default": "hybrid",
           "description": "Music generation mode"
         }
-
+      }
     }
   },
   "scripts": {

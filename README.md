@@ -1,8 +1,18 @@
-# vibe-driven-development README
+# VDD README
 
 This is the README for your extension "vibe-driven-development". After writing up a brief description, we recommend including the following sections.
 
+
 ## Features
+
+- 🎵 Music auto-adapts to your coding rhythm
+- 😊 Three personalities - encouraging, roasting, neutral
+- 🎨 ASCII art animations - changes with mood
+- 📊 Smart activity detection - knows when you're stuck
+- 🧪 Test celebrations - cheers when tests pass
+- 🎹 Strudel live coding - algorithmic music generation
+- 💤 Non-intrusive - just a small status bar icon
+- 🔥 Wholesome - makes coding feel less lonely
 
 Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
 

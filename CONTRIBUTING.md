@@ -25,4 +25,5 @@ Contributions are welcome! Here’s a quick start:
    ```bash
    git push origin feature-name
    ```
+   
 ➡️ Then, go to GitHub and open a Pull Request to the main repo.

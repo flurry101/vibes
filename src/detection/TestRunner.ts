@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ActivityDetector } from './ActivityDetector';
+import { ActivityDetector } from './ActivityDetector.js';
 
 export class TestRunnerIntegration {
   private testRunCount: number = 0;
@@ -14,7 +14,7 @@ export class TestRunnerIntegration {
 
   private setupTestListeners() {
     // Listen for test runs
-    vscode.test.onDidChangeTestResults((event) => {
+    (vscode as any).test.onDidChangeTestRunResults((event: any) => {
       this.testRunCount++;
       this.lastTestTime = Date.now();
 
@@ -22,9 +22,9 @@ export class TestRunnerIntegration {
       let failedTests = 0;
 
       event.results.forEach(result => {
-        if (result.state === vscode.TestResultState.Passed) {
+        if (result.state === (vscode as any).TestResultState.Passed) {
           passedTests++;
-        } else if (result.state === vscode.TestResultState.Failed) {
+        } else if (result.state === (vscode as any).TestResultState.Failed) {
           failedTests++;
         }
       });
@@ -48,7 +48,7 @@ export class TestRunnerIntegration {
     });
 
     // Detect when tests are running (before results)
-    vscode.test.onDidChangeTestRunProfile(() => {
+    (vscode as any).test.onDidStartTestRun((run: any) => {
       console.log('🧪 Test run started');
       this.activityDetector.manualStateChange('testing');
     });

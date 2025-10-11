@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { ActivityDetector } from './detection/ActivityDetector';
-import { TestRunnerIntegration } from './detection/TestRunner';
-import { AIMusic Generator } from './ai/MusicGenerator';
-import { StrudelGenerator } from './music/StrudelGenerator';
-import { ActivityState, VibeMode, CompanionState } from './types';
-import { getASCIIFrame, getASCIIFrameCount } from './utils/asciiArt';
+import { ActivityDetector } from './detection/ActivityDetector.js';
+import { TestRunnerIntegration } from './detection/TestRunner.js';
+import { AIMusicGenerator } from './ai/MusicGenerator.js';
+import { StrudelGenerator } from './music/StrudelGenerator.js';
+import { ActivityState, VibeMode, CompanionState } from './types/index.js';
+import { getASCIIFrame, getASCIIFrameCount } from './utils/asciiArt.js';
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let activityDetector: ActivityDetector | undefined;
@@ -75,18 +75,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(showCommand, vibeCommand, toggleMusicCommand);
 
-	// Status bar item
+	// Status bar item (MINIMAL - always visible)
 	const statusBarItem = vscode.window.createStatusBarItem(
 		vscode.StatusBarAlignment.Right,
 		100
 	);
-	statusBarItem.text = `$(rocket) ${currentVibe}`;
-	statusBarItem.tooltip = 'Click to change vibe';
+	statusBarItem.text = `$(heart) ${currentVibe}`;
+	statusBarItem.tooltip = 'Vibe Driven Development - Click to change vibe';
 	statusBarItem.command = 'vibe-driven-development.changeVibe';
 	statusBarItem.show();
 	context.subscriptions.push(statusBarItem);
 
-	// Update status bar with state
+	// Update status bar with state (minimal emoji only)
 	setInterval(() => {
 		const stateEmoji = {
 			idle: '💤',
@@ -98,11 +98,8 @@ export function activate(context: vscode.ExtensionContext) {
 			test_passed: '✅',
 			test_failed: '❌'
 		};
-		statusBarItem.text = `${stateEmoji[currentState] || '$(rocket)'} ${currentVibe}`;
+		statusBarItem.text = `${stateEmoji[currentState]} ${currentVibe}`;
 	}, 1000);
-
-	// Auto-show on startup (optional)
-	// showCompanion(context, apiKey);
 
 	context.subscriptions.push({
 		dispose: () => {
@@ -195,7 +192,7 @@ function updateCompanion() {
 		activityState: currentState,
 		message: `State: ${currentState}`,
 		ascii: ascii,
-		musicSource: { type: 'ai' }, // Will be populated by webview
+		musicSource: { type: 'ai' },
 		metrics: metrics
 	};
 
@@ -206,7 +203,6 @@ function updateCompanion() {
 }
 
 function getWebviewContent(apiKey: string): string {
-	// [NEXT PART - Webview HTML with Strudel integration]
 	return `<!DOCTYPE html>
 	<html>
 	<head>
@@ -217,26 +213,31 @@ function getWebviewContent(apiKey: string): string {
 				font-family: var(--vscode-font-family);
 				color: var(--vscode-foreground);
 				background: var(--vscode-editor-background);
-				padding: 20px;
+				padding: 15px;
+				overflow-x: hidden;
 			}
-			.container { max-width: 600px; margin: 0 auto; }
+			.container { max-width: 500px; margin: 0 auto; }
+			h1 { text-align: center; font-size: 20px; margin-bottom: 15px; }
 			
 			.vibe-selector {
 				display: flex;
-				gap: 10px;
-				margin: 20px 0;
+				gap: 8px;
+				margin: 15px 0;
 				justify-content: center;
 			}
 			
 			.btn {
-				padding: 10px 20px;
+				padding: 8px 16px;
 				border: 2px solid var(--vscode-button-border);
 				background: var(--vscode-button-background);
 				color: var(--vscode-button-foreground);
 				cursor: pointer;
 				border-radius: 6px;
+				font-size: 13px;
+				transition: all 0.2s;
 			}
 			
+			.btn:hover { background: var(--vscode-button-hoverBackground); }
 			.btn.active {
 				background: var(--vscode-button-secondaryBackground);
 				border-color: var(--vscode-focusBorder);
@@ -246,89 +247,98 @@ function getWebviewContent(apiKey: string): string {
 				font-family: 'Courier New', monospace;
 				white-space: pre;
 				text-align: center;
-				font-size: 16px;
-				line-height: 1.3;
-				margin: 30px 0;
+				font-size: 14px;
+				line-height: 1.2;
+				margin: 20px 0;
 				background: var(--vscode-textCodeBlock-background);
-				padding: 20px;
+				padding: 15px;
 				border-radius: 8px;
-				min-height: 180px;
+				min-height: 150px;
 			}
 			
 			.music-controls {
 				display: flex;
-				gap: 10px;
+				gap: 8px;
 				justify-content: center;
-				margin: 20px 0;
+				margin: 15px 0;
 				flex-wrap: wrap;
 			}
 			
 			.metrics {
 				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-				gap: 10px;
-				margin: 20px 0;
+				grid-template-columns: repeat(2, 1fr);
+				gap: 8px;
+				margin: 15px 0;
 			}
 			
 			.metric {
-				padding: 10px;
+				padding: 8px;
 				background: var(--vscode-editor-inactiveSelectionBackground);
 				border-radius: 4px;
-				font-size: 12px;
+				font-size: 11px;
 			}
 			
-			.metric-label {
-				color: var(--vscode-descriptionForeground);
-			}
-			
+			.metric-label { color: var(--vscode-descriptionForeground); }
 			.metric-value {
-				font-size: 16px;
+				font-size: 14px;
 				font-weight: bold;
-				margin-top: 5px;
+				margin-top: 3px;
+			}
+
+			.mood-indicator {
+				text-align: center;
+				font-size: 12px;
+				color: var(--vscode-descriptionForeground);
+				margin-top: 10px;
+				font-style: italic;
 			}
 		</style>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+		<script src="https://unpkg.com/@strudel.cycles/core"></script>
+		<script src="https://unpkg.com/@strudel.cycles/tonal"></script>
+		<script src="https://unpkg.com/@strudel.cycles/webaudio"></script>
 	</head>
 	<body>
 		<div class="container">
-			<h1 style="text-align: center;">🎵 Vibe Companion</h1>
+			<h1>🎵 Vibe Companion</h1>
 			
 			<div class="vibe-selector">
-				<button class="btn active" data-vibe="encouraging">😊 Encouraging</button>
-				<button class="btn" data-vibe="roasting">😏 Roasting</button>
-				<button class="btn" data-vibe="neutral">🤖 Neutral</button>
+				<button class="btn active" data-vibe="encouraging">😊</button>
+				<button class="btn" data-vibe="roasting">😏</button>
+				<button class="btn" data-vibe="neutral">🤖</button>
 			</div>
 
 			<div class="ascii-art" id="asciiArt">Loading...</div>
 
 			<div class="music-controls">
-				<button class="btn" id="musicToggle">🔊 Music ON</button>
-				<select class="btn" id="musicMode">
-					<option value="curated">Curated</option>
-					<option value="ai">AI Generated</option>
-					<option value="strudel">Strudel Live</option>
+				<button class="btn" id="musicToggle">🔊 Music</button>
+				<select class="btn" id="musicMode" style="padding: 6px 12px;">
+					<option value="ai">AI</option>
+					<option value="strudel">Strudel</option>
 					<option value="hybrid" selected>Hybrid</option>
 				</select>
 			</div>
 
 			<div class="metrics">
 				<div class="metric">
-					<div class="metric-label">Typing Speed</div>
-					<div class="metric-value" id="typingSpeed">0 CPM</div>
+					<div class="metric-label">Typing</div>
+					<div class="metric-value" id="typingSpeed">0</div>
 				</div>
 				<div class="metric">
-					<div class="metric-label">Idle Time</div>
+					<div class="metric-label">Idle</div>
 					<div class="metric-value" id="idleTime">0s</div>
 				</div>
 				<div class="metric">
-					<div class="metric-label">Tab Switches</div>
+					<div class="metric-label">Switches</div>
 					<div class="metric-value" id="tabSwitches">0</div>
 				</div>
 				<div class="metric">
-					<div class="metric-label">Time in File</div>
+					<div class="metric-label">In File</div>
 					<div class="metric-value" id="timeInFile">0m</div>
 				</div>
 			</div>
+
+			<div class="mood-indicator" id="moodIndicator">Ready to vibe</div>
 		</div>
 
 		<script>
@@ -338,13 +348,15 @@ function getWebviewContent(apiKey: string): string {
 			let musicEnabled = true;
 			let musicInitialized = false;
 			let synth = null;
+			let currentLoop = null;
+			let strudelPattern = null;
 
 			// Initialize Tone.js
 			async function initMusic() {
 				if (musicInitialized) return;
 				await Tone.start();
 				synth = new Tone.PolySynth(Tone.Synth).toDestination();
-				synth.volume.value = -10;
+				synth.volume.value = -12;
 				musicInitialized = true;
 				console.log('🎵 Music ready');
 			}
@@ -369,10 +381,10 @@ function getWebviewContent(apiKey: string): string {
 				if (!musicInitialized) await initMusic();
 				musicEnabled = !musicEnabled;
 				document.getElementById('musicToggle').textContent = 
-					musicEnabled ? '🔊 Music ON' : '🔇 Music OFF';
+					musicEnabled ? '🔊 Music' : '🔇 Muted';
 				
 				if (!musicEnabled) {
-					Tone.Transport.stop();
+					stopAllMusic();
 				}
 			});
 
@@ -381,6 +393,24 @@ function getWebviewContent(apiKey: string): string {
 				musicMode = e.target.value;
 				console.log('Music mode:', musicMode);
 			});
+
+			// Stop all music
+			function stopAllMusic() {
+				if (currentLoop) {
+					currentLoop.stop();
+					currentLoop.dispose();
+					currentLoop = null;
+				}
+				Tone.Transport.stop();
+				Tone.Transport.cancel(0);
+				
+				if (strudelPattern) {
+					try {
+						strudelPattern.stop();
+					} catch(e) {}
+					strudelPattern = null;
+				}
+			}
 
 			// Listen for updates
 			window.addEventListener('message', async event => {
@@ -394,7 +424,7 @@ function getWebviewContent(apiKey: string): string {
 					
 					// Update metrics
 					document.getElementById('typingSpeed').textContent = 
-						Math.round(state.metrics.typingSpeed) + ' CPM';
+						Math.round(state.metrics.typingSpeed);
 					document.getElementById('idleTime').textContent = 
 						Math.round(state.metrics.idleTime / 1000) + 's';
 					document.getElementById('tabSwitches').textContent = 
@@ -413,37 +443,80 @@ function getWebviewContent(apiKey: string): string {
 				} else if (message.command === 'musicParams') {
 					playAIMusic(message.params);
 				} else if (message.command === 'strudelCode') {
-					console.log('Strudel code:', message.code);
-					// TODO: Integrate Strudel player
+					playStrudelMusic(message.code);
 				}
 			});
 
 			// Play AI-generated music
 			function playAIMusic(params) {
-				if (!synth) return;
+				if (!synth || !musicEnabled) return;
 				
-				Tone.Transport.stop();
-				Tone.Transport.cancel(0);
+				stopAllMusic();
 				
 				synth.volume.value = params.volume;
 				Tone.Transport.bpm.value = params.tempo;
 
-				const { notes, duration, pattern } = params;
+				const { notes, duration, pattern, mood } = params;
+				
+				// Update mood indicator
+				document.getElementById('moodIndicator').textContent = mood;
 
 				if (pattern === 'chord') {
-					const loop = new Tone.Loop((time) => {
+					currentLoop = new Tone.Loop((time) => {
 						synth.triggerAttackRelease(notes, duration, time);
 					}, '1n');
-					loop.start(0);
+					currentLoop.start(0);
 				} else if (pattern === 'ascending' || pattern === 'descending') {
 					const seq = pattern === 'descending' ? [...notes].reverse() : notes;
 					const sequence = new Tone.Sequence((time, note) => {
 						synth.triggerAttackRelease(note, duration, time);
 					}, seq, duration);
 					sequence.start(0);
+				} else if (pattern === 'arpeggio') {
+					const arp = [...notes, ...notes.slice().reverse().slice(1, -1)];
+					const sequence = new Tone.Sequence((time, note) => {
+						synth.triggerAttackRelease(note, duration, time);
+					}, arp, duration);
+					sequence.start(0);
 				}
 
 				Tone.Transport.start();
+			}
+
+			// Play Strudel music
+			async function playStrudelMusic(code) {
+				if (!musicEnabled) return;
+				
+				stopAllMusic();
+				
+				try {
+					// Initialize Strudel if needed
+					if (!window.strudel) {
+						await import('https://unpkg.com/@strudel.cycles/core');
+						await import('https://unpkg.com/@strudel.cycles/tonal');
+						await import('https://unpkg.com/@strudel.cycles/webaudio');
+					}
+					
+					// Evaluate Strudel pattern
+					const { evaluate, repl } = window.strudel;
+					const pattern = evaluate(code);
+					
+					// Start playing
+					const ctx = new (window.AudioContext || window.webkitAudioContext)();
+					await ctx.resume();
+					
+					strudelPattern = await pattern.start();
+					
+					document.getElementById('moodIndicator').textContent = 
+						'Strudel live coding';
+					
+				} catch (error) {
+					console.error('Strudel error:', error);
+					document.getElementById('moodIndicator').textContent = 
+						'Strudel unavailable, using fallback';
+					// Fallback to AI music
+					vscode.postMessage({ command: 'requestMusicParams' });
+				}
 			}
 
 			console.log('🚀 Vibe Companion ready!');

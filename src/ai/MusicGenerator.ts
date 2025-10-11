@@ -1,6 +1,6 @@
 import { MusicParams, ActivityState, VibeMode } from '../types';
 
-export class AIMusic Generator {
+export class AIMusicGenerator {  // FIXED: removed space
   private cache: Map<string, MusicParams> = new Map();
 
   constructor(private apiKey: string) {}
@@ -21,7 +21,7 @@ export class AIMusic Generator {
     }
 
     try {
-      const params = await this.callAI(state, vibe);
+      const params = await this.callGemini(state, vibe);
       this.cache.set(cacheKey, params);
       return params;
     } catch (error) {
@@ -30,7 +30,7 @@ export class AIMusic Generator {
     }
   }
 
-  private async callAI(state: ActivityState, vibe: VibeMode): Promise<MusicParams> {
+  private async callGemini(state: ActivityState, vibe: VibeMode): Promise<MusicParams> {
     const prompt = `You are a music composer AI for a coding companion app.
 
 Current coding state: ${state}
@@ -67,29 +67,29 @@ Volume: -20 (quiet) to -5 (loud)
 
 DO NOT include any explanation, ONLY the JSON.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
-      })
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
+        })
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.content[0].text;
+    const text = data.candidates[0].content.parts[0].text;
     
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
