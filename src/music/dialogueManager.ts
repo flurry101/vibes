@@ -1,6 +1,4 @@
 // src/music/dialogueManager.ts
-import * as Tone from 'tone';
-
 export type DialogueContext = 
   | 'triumph'      // Solved a problem
   | 'struggle'     // Stuck for a while
@@ -165,34 +163,10 @@ export class DialogueManager {
     const quote = contextQuotes[Math.floor(Math.random() * contextQuotes.length)];
     this.lastDialogue = now;
 
-    // Play text-to-speech or pre-recorded audio
-    await this.playQuoteAudio(quote);
+    // Note: Audio playback happens in webview, not here
+    console.log(`💬 ${quote.text} - ${quote.source}`);
 
     return quote;
-  }
-
-  private async playQuoteAudio(quote: DialogueQuote) {
-    // If we have a pre-recorded audio URL, use it
-    if (quote.audioUrl) {
-      const player = new Tone.Player(quote.audioUrl).toDestination();
-      await player.load(quote.audioUrl);
-      player.start();
-      
-      // Cleanup after playing
-      player.onstop = () => player.dispose();
-      return;
-    }
-
-    // Otherwise, use browser's speech synthesis
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(quote.text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 0.7;
-      window.speechSynthesis.speak(utterance);
-    } else {
-      console.log(`💬 ${quote.text} - ${quote.source}`);
-    }
   }
 
   // Add custom quotes
@@ -210,11 +184,5 @@ export class DialogueManager {
       return null;
     }
     return contextQuotes[Math.floor(Math.random() * contextQuotes.length)];
-  }
-
-  // For testing/preview
-  previewQuote(quote: DialogueQuote) {
-    this.lastDialogue = 0; // Reset cooldown for preview
-    this.playQuoteAudio(quote);
   }
 }
