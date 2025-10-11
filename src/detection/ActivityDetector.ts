@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ActivityState, ActivityMetrics } from '../types.js';
+import { ActivityState, ActivityMetrics } from '../types';
 
 export class ActivityDetector {
   private lastActivity: number = Date.now();
@@ -59,11 +59,17 @@ export class ActivityDetector {
 
   private detectState(): ActivityState {
     const idleTime = Date.now() - this.lastActivity;
-    
-    if (idleTime > 30000) return 'idle';  // More than 30 seconds of inactivity
-    if (this.typingCount > 10) return 'productive'; // Typing count over 10 changes to productive
-    if (idleTime > 10000 && idleTime < 30000) return 'stuck';  // More than 10 seconds idle but less than 30
-    
+
+    if (idleTime > 30000) {
+      return 'idle';  // More than 30 seconds of inactivity
+    }
+    if (this.typingCount > 10) {
+      return 'productive'; // Typing count over 10 changes to productive
+    }
+    if (idleTime > 10000 && idleTime < 30000) {
+      return 'stuck';  // More than 10 seconds idle but less than 30
+    }
+
     return 'productive';
   }
 

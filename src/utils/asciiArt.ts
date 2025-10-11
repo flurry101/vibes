@@ -1,4 +1,4 @@
-import { VibeMode, ActivityState } from '../types.js';
+import { VibeMode, ActivityState } from '../types';
 
 type AnimationFrames = Record<ActivityState, string[]>;
 type AllAnimations = Record<VibeMode, AnimationFrames>;

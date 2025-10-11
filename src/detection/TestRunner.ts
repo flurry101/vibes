@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ActivityDetector } from './activityDetector.js';
+import { ActivityDetector } from './ActivityDetector';
 
 export class TestRunner {
   private detector: ActivityDetector;

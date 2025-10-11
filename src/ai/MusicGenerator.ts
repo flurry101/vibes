@@ -1,4 +1,4 @@
-import { MusicParams, ActivityState, VibeMode } from '../types.js';
+import { MusicParams, ActivityState, VibeMode } from '../types';
 
 export class AIMusicGenerator {
   private currentState: ActivityState = 'idle';

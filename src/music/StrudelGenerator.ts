@@ -1,4 +1,4 @@
-import { ActivityState, VibeMode } from '../types.js';
+import { ActivityState, VibeMode } from '../types';
 
 type PatternMap = Record<ActivityState, string>;
 
