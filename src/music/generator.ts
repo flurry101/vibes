@@ -1,62 +1,32 @@
-{
-  "name": "vibe-driven-development",
-  "displayName": "Vibe Driven Development",
-  "description": "A VS Code AI coding companion that supports actual Vibe-Driven Development (VDD)",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.105.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "vibe-driven-development.showCompanion",
-        "title": "VDD: Show Vibe Companion"
-      }
-    ],
-    "configuration": {
-      "title": "Vibe Driven Development",
-      "properties": {
-        "vibe-driven-development.anthropicApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your Anthropic API key for AI music generation (get one at console.anthropic.com)"
-        }
-      }
-    }
-  },
-  "scripts": {
-    "vscode:prepublish": "pnpm run package",
-    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@types/vscode": "^1.105.0",
-    "@typescript-eslint/eslint-plugin": "^8.45.0",
-    "@typescript-eslint/parser": "^8.45.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.25.10",
-    "eslint": "^9.36.0",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {}
-}
+import { MusicData } from '../types';
+
+export type MusicState = 'idle' | 'productive' | 'stuck' | 'testing' | 'celebrating';
+
+export class MusicGenerator {
+  // This is just a placeholder
+  // Real music generation happens in webview
+  private callback: (data: MusicData) => void;
+  constructor(callback: (data: MusicData) => void) {
+    this.callback = callback;
+    console.log('Music generator initialized');
+  }
+
+  async initialize() {
+    console.log('Music generator initialized');
+  }
+
+  async playStateMusic(state: MusicState) {
+    console.log('Playing music for state:', state);
+    // Will send message to webview to actually play music
+  }
+
+  setVibe(vibe: string) {
+    console.log('Setting vibe:', vibe);
+    // Logic to adjust music based on the vibe, e.g., update the webview music player or settings
+    // You'll implement the music-vibe mapping here
+  }
+
+
+  stop() {
+    console.log('Stopping music');
+}}

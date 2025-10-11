@@ -23,10 +23,10 @@
     "configuration": {
       "title": "Vibe Driven Development",
       "properties": {
-        "vibe-driven-development.anthropicApiKey": {
+        "vibe-driven-development.geminiAPIkey": {
           "type": "string",
           "default": "",
-          "description": "Your Anthropic API key for AI music generation (get one at console.anthropic.com)"
+          "description": "Your API key for AI music generation (get one at console.anthropic.com)"
         }
       }
     }
@@ -50,6 +50,8 @@
     "@types/node": "22.x",
     "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
     "@typescript-eslint/parser": "^8.45.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
@@ -58,5 +60,9 @@
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3"
   },
-  "dependencies": {}
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tone": "^15.1.22"
+  }
 }
