@@ -1,11 +1,98 @@
 import { ActivityState, VibeMode } from '../types';
 
-type PatternMap = Record<ActivityState, string>;
+interface MusicConfig {
+  tempo: number;
+  notes: string[];
+  duration: string;
+  pattern: string;
+  volume: number;
+  mood: string;
+}
+
+type MusicConfigs = Record<string, MusicConfig>;
 
 export class StrudelGenerator {
   private currentPattern: string = '';
   private currentState: ActivityState = 'idle';
   private currentVibe: VibeMode = 'encouraging';
+
+  // Music configurations from the task
+  private musicConfigs: MusicConfigs = {
+    'idle-encouraging': {
+      tempo: 70, notes: ['C3', 'E3', 'G3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'calm ambient'
+    },
+    'productive-encouraging': {
+      tempo: 128, notes: ['C4', 'E4', 'G4', 'B4'], duration: '4n', pattern: 'arpeggio', volume: -10, mood: 'energetic flow'
+    },
+    'stuck-encouraging': {
+      tempo: 80, notes: ['A3', 'C4', 'E4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'contemplative support'
+    },
+    'procrastinating-encouraging': {
+      tempo: 110, notes: ['D4', 'F4', 'A4'], duration: '8n', pattern: 'ascending', volume: -12, mood: 'gentle urgency'
+    },
+    'testing-encouraging': {
+      tempo: 100, notes: ['G3', 'B3', 'D4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'hopeful suspense'
+    },
+    'building-encouraging': {
+      tempo: 60, notes: ['C3', 'G3'], duration: '1n', pattern: 'chord', volume: -18, mood: 'patient waiting'
+    },
+    'test_passed-encouraging': {
+      tempo: 150, notes: ['C5', 'E5', 'G5', 'C6'], duration: '16n', pattern: 'ascending', volume: -5, mood: 'joyful triumph'
+    },
+    'test_failed-encouraging': {
+      tempo: 70, notes: ['A3', 'F3', 'C3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'sympathetic comfort'
+    },
+
+    'idle-roasting': {
+      tempo: 75, notes: ['C3', 'Eb3', 'Gb3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'sarcastic judgment'
+    },
+    'productive-roasting': {
+      tempo: 135, notes: ['C4', 'Eb4', 'Gb4', 'A4'], duration: '8n', pattern: 'arpeggio', volume: -12, mood: 'skeptical energy'
+    },
+    'stuck-roasting': {
+      tempo: 85, notes: ['E4', 'Eb4', 'D4', 'C4'], duration: '4n', pattern: 'descending', volume: -15, mood: 'mocking pity'
+    },
+    'procrastinating-roasting': {
+      tempo: 120, notes: ['Bb3', 'C4', 'Bb3'], duration: '8n', pattern: 'arpeggio', volume: -10, mood: 'annoyed impatience'
+    },
+    'testing-roasting': {
+      tempo: 95, notes: ['G3', 'Bb3', 'Db4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'doubtful anticipation'
+    },
+    'building-roasting': {
+      tempo: 55, notes: ['C3', 'F3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'bored waiting'
+    },
+    'test_passed-roasting': {
+      tempo: 140, notes: ['C5', 'Eb5', 'G5'], duration: '16n', pattern: 'ascending', volume: -8, mood: 'surprised approval'
+    },
+    'test_failed-roasting': {
+      tempo: 75, notes: ['E4', 'D4', 'C4', 'B3'], duration: '4n', pattern: 'descending', volume: -12, mood: 'told you so'
+    },
+
+    'idle-neutral': {
+      tempo: 72, notes: ['C3', 'G3', 'C4'], duration: '1n', pattern: 'chord', volume: -18, mood: 'neutral standby'
+    },
+    'productive-neutral': {
+      tempo: 120, notes: ['C4', 'D4', 'E4', 'G4'], duration: '4n', pattern: 'ascending', volume: -12, mood: 'systematic efficiency'
+    },
+    'stuck-neutral': {
+      tempo: 80, notes: ['A3', 'E4', 'A4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'analytical pause'
+    },
+    'procrastinating-neutral': {
+      tempo: 105, notes: ['C4', 'E4', 'C4'], duration: '8n', pattern: 'arpeggio', volume: -13, mood: 'deviation detected'
+    },
+    'testing-neutral': {
+      tempo: 95, notes: ['C4', 'E4', 'G4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'execution in progress'
+    },
+    'building-neutral': {
+      tempo: 60, notes: ['C3', 'E3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'compilation running'
+    },
+    'test_passed-neutral': {
+      tempo: 130, notes: ['C5', 'E5', 'G5'], duration: '8n', pattern: 'ascending', volume: -10, mood: 'success confirmed'
+    },
+    'test_failed-neutral': {
+      tempo: 75, notes: ['C4', 'Bb3', 'Ab3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'error detected'
+    }
+  };
 
   constructor() {
     console.log('Strudel Generator initialized');
@@ -20,39 +107,38 @@ export class StrudelGenerator {
     this.currentState = state;
     this.currentVibe = vibe;
 
-    const basePattern = this.getBasePattern(state);
-    const modifiedPattern = this.applyVibe(basePattern, vibe);
-    
-    this.currentPattern = modifiedPattern;
-    return modifiedPattern;
-  }
+    const configKey = `${state}-${vibe}`;
+    const config = this.musicConfigs[configKey];
 
-  private getBasePattern(state: ActivityState): string {
-    const patterns: PatternMap = {
-      idle: 'sound("bd").slow(2)',
-      productive: 'sound("bd hh sd hh").fast(1.5)',
-      stuck: 'sound("bd . sd .").slow(1)',
-      procrastinating: 'sound("bd . . .").slow(2)',
-      testing: 'sound("bd sd").palindrome()',
-      building: 'sound("bd hh sd hh").fast(2)',
-      test_passed: 'sound("bd*4 sd*4").fast(2)',
-      test_failed: 'sound("bd sd").rev().slow(1)'
-    };
-    
-    return patterns[state] || patterns.idle;
-  }
-
-  private applyVibe(pattern: string, vibe: VibeMode): string {
-    switch (vibe) {
-      case 'encouraging':
-        return `${pattern}.gain(0.8)`;
-      case 'roasting':
-        return `${pattern}.gain(0.6).fast(1.2)`;
-      case 'neutral':
-        return `${pattern}.gain(0.5)`;
-      default:
-        return pattern;
+    if (!config) {
+      console.warn(`No config found for ${configKey}, using idle-encouraging`);
+      return this.generateStrudelPattern(this.musicConfigs['idle-encouraging']);
     }
+
+    this.currentPattern = this.generateStrudelPattern(config);
+    return this.currentPattern;
+  }
+
+  private generateStrudelPattern(config: MusicConfig): string {
+    const noteString = config.notes.join(' ');
+    let pattern = `note("${noteString}").${config.pattern}()`;
+
+    // Apply duration
+    pattern += `.${config.duration}`;
+
+    // Apply tempo (bpm)
+    pattern += `.slow(${60 / config.tempo})`; // Strudel uses relative speed
+
+    // Apply volume
+    const gain = Math.max(0, Math.min(1, (config.volume + 30) / 30)); // Convert dB to 0-1
+    pattern += `.gain(${gain})`;
+
+    return pattern;
+  }
+
+  getCurrentConfig(): MusicConfig | null {
+    const configKey = `${this.currentState}-${this.currentVibe}`;
+    return this.musicConfigs[configKey] || null;
   }
 
   async play(): Promise<void> {

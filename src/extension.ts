@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ActivityDetector } from './detection/activityDetector';
+import { ActivityDetector } from './detection/ActivityDetector';
 import { MusicEngine } from './music/musicEngine';
 import { DialogueManager, DialogueContext } from './music/dialogueManager';
 import { TestRunner } from './detection/TestRunner';
@@ -55,6 +55,8 @@ export function activate(context: vscode.ExtensionContext) {
 			musicEngine?.playStateMusic(newState);
 		});
 
+		testRunner = new TestRunner(activityDetector);
+
 		currentPanel.webview.onDidReceiveMessage(
 			message => {
 				switch (message.command) {
@@ -75,6 +77,15 @@ export function activate(context: vscode.ExtensionContext) {
 						break;
 					case 'musicStatus':
 						console.log('Music status:', message.status);
+						break;
+					case 'getMetrics':
+						if (activityDetector) {
+							const metrics = activityDetector.getMetrics();
+							currentPanel?.webview.postMessage({
+								command: 'metrics',
+								data: metrics
+							});
+						}
 						break;
 				}
 			},
@@ -130,7 +141,7 @@ function startAnimation(state: ActivityState, vibe: VibeMode) {
 }
 
 async function handleDialogue(state: ActivityState) {
-	if (!dialogueManager) return;
+	if (!dialogueManager) {return;}
 
 	const sessionDuration = Date.now() - sessionStartTime;
 	let context: DialogueContext | null = null;
@@ -241,19 +252,18 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				color: var(--vscode-descriptionForeground);
 				margin-top: 10px;
 			}
-			.controls {
-				margin: 30px 0;
-				display: flex;
-				flex-direction: column;
-				gap: 15px;
-				align-items: center;
+			.idle-time {
+				font-size: 18px;
+				font-weight: bold;
+				color: var(--vscode-foreground);
+				margin: 15px 0;
+				text-align: center;
 			}
-			.control-row {
+			.controls {
+				margin: 20px 0;
 				display: flex;
 				gap: 10px;
-				align-items: center;
-				width: 100%;
-				max-width: 300px;
+				justify-content: center;
 			}
 			.control-btn {
 				padding: 10px 20px;
@@ -262,8 +272,14 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				color: var(--vscode-button-foreground);
 				cursor: pointer;
 				border-radius: 4px;
-				font-size: 11px;
-				color: var(--vscode-descriptionForeground);
+				font-size: 14px;
+				transition: all 0.2s;
+			}
+			.control-btn:hover {
+				background: var(--vscode-button-hoverBackground);
+			}
+			.control-btn:active {
+				transform: scale(0.95);
 			}
 			.volume-control {
 				margin-top: 15px;
@@ -275,6 +291,31 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			}
 			.volume-control input {
 				width: 200px;
+			}
+			.advanced-controls {
+				margin-top: 20px;
+				display: flex;
+				flex-direction: column;
+				gap: 15px;
+			}
+			.control-group {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+			.control-group label {
+				min-width: 60px;
+				font-size: 12px;
+			}
+			.control-group input[type="range"] {
+				width: 120px;
+			}
+			.control-group select {
+				padding: 4px 8px;
+				border: 1px solid var(--vscode-button-border);
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+				border-radius: 3px;
 			}
 		</style>
 	</head>
@@ -295,14 +336,47 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			</div>
 
 			<div class="state" id="state">State: idle</div>
-			
+
+			<div class="idle-time" id="idleTime">Idle: 0s</div>
+
 			<div class="music-status" id="musicStatus">
 				🎵 Click a vibe button to start music
+			</div>
+
+			<div class="controls">
+				<button class="control-btn" id="playBtn">▶️ Play</button>
+				<button class="control-btn" id="stopBtn">⏹️ Stop</button>
 			</div>
 
 			<div class="volume-control">
 				<label for="volume">Volume</label>
 				<input type="range" id="volume" min="-30" max="0" value="-12" step="1">
+			</div>
+
+			<div class="advanced-controls">
+				<div class="control-group">
+					<label for="speed">Speed</label>
+					<input type="range" id="speed" min="0.5" max="2" value="1" step="0.1">
+					<span id="speedValue">1.0x</span>
+				</div>
+				<div class="control-group">
+					<label for="rhythm">Rhythm</label>
+					<select id="rhythm">
+						<option value="normal">Normal</option>
+						<option value="syncopated">Syncopated</option>
+						<option value="swing">Swing</option>
+						<option value="random">Random</option>
+					</select>
+				</div>
+				<div class="control-group">
+					<label for="beats">Beats</label>
+					<select id="beats">
+						<option value="4">4/4</option>
+						<option value="3">3/4</option>
+						<option value="6">6/8</option>
+						<option value="5">5/4</option>
+					</select>
+				</div>
 			</div>
 		</div>
 
@@ -315,6 +389,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			let currentLoop = null;
 			let synth = null;
 			let isPlaying = false;
+			let speedMultiplier = 1;
+			let rhythmType = 'normal';
+			let beatsPerMeasure = 4;
 
 			// 🎵 MUSIC SETUP
 			async function initMusic() {
@@ -342,27 +419,81 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				}
 			}
 
-			// 🎵 MUSIC PATTERNS
-			const musicPatterns = {
-				idle: {
-					notes: ['C4', 'E4', 'G4'],
-					interval: '2n',
-					tempo: 60
+			// 🎵 MUSIC CONFIGS (from task requirements)
+			const musicConfigs = {
+				'idle-encouraging': {
+					tempo: 70, notes: ['C3', 'E3', 'G3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'calm ambient'
 				},
-				productive: {
-					notes: ['C4', 'D4', 'E4', 'G4', 'A4', 'C5'],
-					interval: '8n',
-					tempo: 120
+				'productive-encouraging': {
+					tempo: 128, notes: ['C4', 'E4', 'G4', 'B4'], duration: '4n', pattern: 'arpeggio', volume: -10, mood: 'energetic flow'
 				},
-				stuck: {
-					notes: ['C4', 'D4', 'C4'],
-					interval: '4n',
-					tempo: 80
+				'stuck-encouraging': {
+					tempo: 80, notes: ['A3', 'C4', 'E4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'contemplative support'
 				},
-				testing: {
-					notes: ['C4', 'E4', 'G4', 'C5'],
-					interval: '4n',
-					tempo: 100
+				'procrastinating-encouraging': {
+					tempo: 110, notes: ['D4', 'F4', 'A4'], duration: '8n', pattern: 'ascending', volume: -12, mood: 'gentle urgency'
+				},
+				'testing-encouraging': {
+					tempo: 100, notes: ['G3', 'B3', 'D4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'hopeful suspense'
+				},
+				'building-encouraging': {
+					tempo: 60, notes: ['C3', 'G3'], duration: '1n', pattern: 'chord', volume: -18, mood: 'patient waiting'
+				},
+				'test_passed-encouraging': {
+					tempo: 150, notes: ['C5', 'E5', 'G5', 'C6'], duration: '16n', pattern: 'ascending', volume: -5, mood: 'joyful triumph'
+				},
+				'test_failed-encouraging': {
+					tempo: 70, notes: ['A3', 'F3', 'C3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'sympathetic comfort'
+				},
+
+				'idle-roasting': {
+					tempo: 75, notes: ['C3', 'Eb3', 'Gb3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'sarcastic judgment'
+				},
+				'productive-roasting': {
+					tempo: 135, notes: ['C4', 'Eb4', 'Gb4', 'A4'], duration: '8n', pattern: 'arpeggio', volume: -12, mood: 'skeptical energy'
+				},
+				'stuck-roasting': {
+					tempo: 85, notes: ['E4', 'Eb4', 'D4', 'C4'], duration: '4n', pattern: 'descending', volume: -15, mood: 'mocking pity'
+				},
+				'procrastinating-roasting': {
+					tempo: 120, notes: ['Bb3', 'C4', 'Bb3'], duration: '8n', pattern: 'arpeggio', volume: -10, mood: 'annoyed impatience'
+				},
+				'testing-roasting': {
+					tempo: 95, notes: ['G3', 'Bb3', 'Db4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'doubtful anticipation'
+				},
+				'building-roasting': {
+					tempo: 55, notes: ['C3', 'F3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'bored waiting'
+				},
+				'test_passed-roasting': {
+					tempo: 140, notes: ['C5', 'Eb5', 'G5'], duration: '16n', pattern: 'ascending', volume: -8, mood: 'surprised approval'
+				},
+				'test_failed-roasting': {
+					tempo: 75, notes: ['E4', 'D4', 'C4', 'B3'], duration: '4n', pattern: 'descending', volume: -12, mood: 'told you so'
+				},
+
+				'idle-neutral': {
+					tempo: 72, notes: ['C3', 'G3', 'C4'], duration: '1n', pattern: 'chord', volume: -18, mood: 'neutral standby'
+				},
+				'productive-neutral': {
+					tempo: 120, notes: ['C4', 'D4', 'E4', 'G4'], duration: '4n', pattern: 'ascending', volume: -12, mood: 'systematic efficiency'
+				},
+				'stuck-neutral': {
+					tempo: 80, notes: ['A3', 'E4', 'A4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'analytical pause'
+				},
+				'procrastinating-neutral': {
+					tempo: 105, notes: ['C4', 'E4', 'C4'], duration: '8n', pattern: 'arpeggio', volume: -13, mood: 'deviation detected'
+				},
+				'testing-neutral': {
+					tempo: 95, notes: ['C4', 'E4', 'G4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'execution in progress'
+				},
+				'building-neutral': {
+					tempo: 60, notes: ['C3', 'E3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'compilation running'
+				},
+				'test_passed-neutral': {
+					tempo: 130, notes: ['C5', 'E5', 'G5'], duration: '8n', pattern: 'ascending', volume: -10, mood: 'success confirmed'
+				},
+				'test_failed-neutral': {
+					tempo: 75, notes: ['C4', 'Bb3', 'Ab3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'error detected'
 				}
 			};
 
@@ -380,17 +511,79 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 						currentLoop = null;
 					}
 
-				const pattern = musicPatterns[state] || musicPatterns.idle;
-				Tone.Transport.bpm.value = pattern.tempo;
+					const configKey = state + '-' + currentVibe;
+					const config = musicConfigs[configKey] || musicConfigs['idle-encouraging'];
 
-				let index = 0;
-				currentLoop = new Tone.Loop(time => {
-					synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
-					index = (index + 1) % pattern.notes.length;
-				}, pattern.interval).start(0);
+					// Apply speed multiplier
+					Tone.Transport.bpm.value = config.tempo * speedMultiplier;
+
+					// Set synth volume
+					synth.volume.value = config.volume;
+
+					let index = 0;
+					let patternIndex = 0;
+
+					// Convert duration to Tone.js format
+					const durationMap = {
+						'16n': '16n',
+						'8n': '8n',
+						'4n': '4n',
+						'2n': '2n',
+						'1n': '1n'
+					};
+					let interval = durationMap[config.duration] || '4n';
+
+					// Apply rhythm modifications
+					switch (rhythmType) {
+						case 'syncopated':
+							interval = Tone.Time(interval).mult(1.5).toString();
+							break;
+						case 'swing':
+							interval = Tone.Time(interval).mult(0.75).toString();
+							break;
+						case 'random':
+							// Will be handled in the loop
+							break;
+					}
+
+					currentLoop = new Tone.Loop(time => {
+						let note = config.notes[index];
+						let actualInterval = interval;
+
+						// Apply rhythm randomness
+						if (rhythmType === 'random') {
+							actualInterval = Math.random() > 0.7 ? Tone.Time(interval).mult(2).toString() : interval;
+						}
+
+						// Apply pattern logic
+						switch (config.pattern) {
+							case 'arpeggio':
+								note = config.notes[patternIndex % config.notes.length];
+								patternIndex++;
+								break;
+							case 'ascending':
+								note = config.notes[Math.min(patternIndex, config.notes.length - 1)];
+								patternIndex = (patternIndex + 1) % (config.notes.length * 2);
+								break;
+							case 'descending':
+								note = config.notes[config.notes.length - 1 - (patternIndex % config.notes.length)];
+								patternIndex++;
+								break;
+							case 'chord':
+								// Play all notes as chord
+								config.notes.forEach(n => {
+									synth.triggerAttackRelease(n, actualInterval, time);
+								});
+								index = (index + 1) % config.notes.length;
+								return;
+						}
+
+						synth.triggerAttackRelease(note, actualInterval, time);
+						index = (index + 1) % config.notes.length;
+					}, interval).start(0);
 
 					Tone.Transport.start();
-					updateMusicStatus('Playing: ' + state + ' (' + pattern.tempo + ' BPM)');
+					updateMusicStatus('Playing: ' + state + ' (' + config.tempo + ' BPM) - ' + config.mood);
 				} catch (error) {
 					console.error('Error playing music:', error);
 					updateMusicStatus('Playback error: ' + error.message);
@@ -464,57 +657,55 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				});
 			});
 
-			document.getElementById('stopBtn').addEventListener('click', () => stopMusic());
+			// Stop music function
+			function stopMusic() {
+				if (currentLoop) {
+					currentLoop.stop();
+					currentLoop.dispose();
+					currentLoop = null;
+				}
+				Tone.Transport.stop();
+				isPlaying = false;
+				updateMusicStatus('Music stopped');
+				document.getElementById('playBtn').style.display = 'inline-block';
+				document.getElementById('stopBtn').style.display = 'none';
+			}
+
+			// Play/Stop buttons
 			document.getElementById('playBtn').addEventListener('click', async () => {
 				if (!musicInitialized) await initMusic();
-				if (!isPlaying) playMusicForState(currentState);
-			});
-
-			document.getElementById('volumeSlider').addEventListener('input', (e) => {
-				const volume = parseInt(e.target.value);
-				document.getElementById('volumeValue').textContent = volume + '%';
-				if (synth) {
-					synth.volume.value = (volume / 100) * 40 - 40;
+				if (!isPlaying) {
+					playMusicForState(currentState);
+					isPlaying = true;
+					document.getElementById('playBtn').style.display = 'none';
+					document.getElementById('stopBtn').style.display = 'inline-block';
 				}
 			});
 
-			// Dialogue controls
-			document.getElementById('dialogueToggle').addEventListener('change', (e) => {
-				vscode.postMessage({ command: 'toggleDialogue', enabled: e.target.checked });
-			});
-
-			document.getElementById('dialogueFrequency').addEventListener('change', (e) => {
-				vscode.postMessage({ command: 'setDialogueFrequency', frequency: e.target.value });
-			});
-
-			setInterval(() => {
-				vscode.postMessage({ command: 'getMetrics' });
-			}, 2000);
-
-			// Stop button
 			document.getElementById('stopBtn').addEventListener('click', () => {
 				stopMusic();
 			});
 
-			// Play button
-			document.getElementById('playBtn').addEventListener('click', async () => {
-				if (!musicInitialized) {
-					await initMusic();
-				}
-				if (!isPlaying) {
-					playMusicForState(currentState);
+			// Advanced controls
+			document.getElementById('speed').addEventListener('input', (e) => {
+				speedMultiplier = parseFloat(e.target.value);
+				document.getElementById('speedValue').textContent = speedMultiplier.toFixed(1) + 'x';
+				if (isPlaying) {
+					playMusicForState(currentState); // Restart with new speed
 				}
 			});
 
-			// Volume slider
-			document.getElementById('volumeSlider').addEventListener('input', (e) => {
-				const volume = parseInt(e.target.value);
-				document.getElementById('volumeValue').textContent = volume + '%';
-				
-				if (synth) {
-					// Convert 0-100 to decibels (-40 to 0)
-					const db = (volume / 100) * 40 - 40;
-					synth.volume.value = db;
+			document.getElementById('rhythm').addEventListener('change', (e) => {
+				rhythmType = e.target.value;
+				if (isPlaying) {
+					playMusicForState(currentState); // Restart with new rhythm
+				}
+			});
+
+			document.getElementById('beats').addEventListener('change', (e) => {
+				beatsPerMeasure = parseInt(e.target.value);
+				if (isPlaying) {
+					playMusicForState(currentState); // Restart with new beats
 				}
 			});
 
@@ -526,24 +717,23 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			// Listen for messages from extension
 			window.addEventListener('message', event => {
 				const message = event.data;
-				
+
 				switch (message.command) {
 					case 'stateChanged':
 						currentState = message.state;
 						updateDisplay();
-						playMusicForState(currentState);
-						break;
-					case 'metrics':
-						if (message.data) {
-							document.getElementById('typingCount').textContent = message.data.typingCount;
-							document.getElementById('idleTime').textContent = Math.floor(message.data.idleTime / 1000) + 's';
+						if (isPlaying) {
+							playMusicForState(currentState);
 						}
 						break;
 					case 'metrics':
 						if (message.data) {
-							document.getElementById('typingCount').textContent = message.data.typingCount;
 							const idleSeconds = Math.floor(message.data.idleTime / 1000);
-							document.getElementById('idleTime').textContent = idleSeconds + 's';
+							const idleMinutes = Math.floor(idleSeconds / 60);
+							const idleDisplay = idleMinutes > 0 ?
+								idleMinutes + 'm ' + (idleSeconds % 60) + 's' :
+								idleSeconds + 's';
+							document.getElementById('idleTime').textContent = 'Idle: ' + idleDisplay;
 						}
 						break;
 				}
