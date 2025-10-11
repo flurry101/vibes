@@ -1,6 +1,6 @@
 {
   "name": "vibe-driven-development",
-  "displayName": "vibe-driven-development",
+  "displayName": "Vibe Driven Development",
   "description": "A VS Code AI coding companion that supports actual Vibe-Driven Development (VDD)",
   "version": "0.0.1",
   "engines": {
@@ -19,7 +19,17 @@
         "command": "vibe-driven-development.showCompanion",
         "title": "VDD: Show Vibe Companion"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Vibe Driven Development",
+      "properties": {
+        "vibe-driven-development.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Anthropic API key for AI music generation (get one at console.anthropic.com)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
@@ -38,8 +48,6 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.1",
     "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
@@ -50,9 +58,5 @@
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3"
   },
-  "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "tone": "^15.1.22"
-  }
+  "dependencies": {}
 }
