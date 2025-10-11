@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ActivityDetector } from './detection/ActivityDetector.js';
+import { ActivityDetector } from './detection/activityDetector.js';
 import { MusicEngine } from './music/musicEngine.js';
 import { MusicData } from './types.js';
 
