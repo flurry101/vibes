@@ -1,224 +1,62 @@
-// src/music/generator.ts
-
-import * as Tone from 'tone';
-import { MusicParameters, ActivityState, VibeMode, MusicParamGenerator } from '../ai/musicParamGenerator';
-
-export class MusicGenerator {
-  private synth: Tone.PolySynth | null = null;
-  private loop: Tone.Loop | null = null;
-  private initialized = false;
-  private aiGenerator: MusicParamGenerator;
-  private currentParams: MusicParameters | null = null;
-
-  constructor(apiKey: string) {
-    this.aiGenerator = new MusicParamGenerator(apiKey);
-  }
-
-  /**
-   * Initialize Tone.js
-   */
-  async initialize() {
-    if (this.initialized) {
-      return;
-    }
-
-    await Tone.start();
-    
-    // Create polyphonic synthesizer with reverb
-    this.synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: {
-        type: 'sine'
-      },
-      envelope: {
-        attack: 0.05,
-        decay: 0.3,
-        sustain: 0.4,
-        release: 0.8
+{
+  "name": "vibe-driven-development",
+  "displayName": "Vibe Driven Development",
+  "description": "A VS Code AI coding companion that supports actual Vibe-Driven Development (VDD)",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vibe-driven-development.showCompanion",
+        "title": "VDD: Show Vibe Companion"
       }
-    }).toDestination();
-
-    // Add reverb for atmosphere
-    const reverb = new Tone.Reverb({
-      decay: 2,
-      wet: 0.3
-    }).toDestination();
-
-    this.synth.connect(reverb);
-    
-    this.initialized = true;
-    console.log('✅ Music generator initialized');
-  }
-
-  /**
-   * Play music based on AI-generated parameters
-   */
-  async playForState(state: ActivityState, vibe: VibeMode) {
-    if (!this.initialized) {
-      await this.initialize();
+    ],
+    "configuration": {
+      "title": "Vibe Driven Development",
+      "properties": {
+        "vibe-driven-development.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Anthropic API key for AI music generation (get one at console.anthropic.com)"
+        }
+      }
     }
-
-    // Stop current music
-    this.stop();
-
-    try {
-      // Generate parameters via AI
-      console.log(`🎵 Generating music for ${state} + ${vibe}...`);
-      this.currentParams = await this.aiGenerator.generateMusicParams(state, vibe);
-      
-      console.log('🎶 Music params:', this.currentParams);
-
-      // Play the music
-      this.playFromParams(this.currentParams);
-    } catch (error) {
-      console.error('Failed to generate/play music:', error);
-    }
-  }
-
-  /**
-   * Play music from parameters
-   */
-  private playFromParams(params: MusicParameters) {
-    if (!this.synth) {
-      return;
-    }
-
-    // Set volume
-    this.synth.volume.value = params.volume;
-
-    // Create playback pattern
-    const { notes, duration, pattern, tempo } = params;
-    
-    // Set BPM
-    Tone.Transport.bpm.value = tempo;
-
-    // Determine how to play based on pattern
-    switch (pattern) {
-      case 'chord':
-        this.playChord(notes, duration);
-        break;
-      case 'ascending':
-      case 'descending':
-        this.playSequence(notes, duration, pattern === 'descending');
-        break;
-      case 'arpeggio':
-        this.playArpeggio(notes, duration);
-        break;
-    }
-
-    // Start transport
-    Tone.Transport.start();
-  }
-
-  /**
-   * Play chord (all notes together)
-   */
-  private playChord(notes: string[], duration: string) {
-    this.loop = new Tone.Loop((time) => {
-      this.synth?.triggerAttackRelease(notes, duration, time);
-    }, duration === '8n' ? '2n' : '1n'); // Repeat interval
-    
-    this.loop.start(0);
-  }
-
-  /**
-   * Play sequence (one note at a time)
-   */
-  private playSequence(notes: string[], duration: string, reverse: boolean) {
-    const sequence = reverse ? [...notes].reverse() : notes;
-    
-    const seq = new Tone.Sequence((time, note) => {
-      this.synth?.triggerAttackRelease(note, duration, time);
-    }, sequence, duration);
-    
-    seq.start(0);
-  }
-
-  /**
-   * Play arpeggio (broken chord pattern)
-   */
-  private playArpeggio(notes: string[], duration: string) {
-    // Create up-down arpeggio pattern
-    const pattern = [...notes, ...notes.slice().reverse().slice(1, -1)];
-    
-    const seq = new Tone.Sequence((time, note) => {
-      this.synth?.triggerAttackRelease(note, duration, time);
-    }, pattern, duration);
-    
-    seq.start(0);
-  }
-
-  /**
-   * Play celebration sound (for test pass)
-   */
-  async playCelebration() {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    const celebration: MusicParameters = {
-      tempo: 160,
-      notes: ['C5', 'E5', 'G5', 'C6', 'E6'],
-      duration: '16n',
-      pattern: 'ascending',
-      volume: -5,
-      mood: 'triumphant'
-    };
-
-    this.stop();
-    this.playFromParams(celebration);
-
-    // Auto-stop after 2 seconds
-    setTimeout(() => this.stop(), 2000);
-  }
-
-  /**
-   * Play failure sound (for test fail)
-   */
-  async playFailure() {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    // Sad trombone effect
-    const failure: MusicParameters = {
-      tempo: 60,
-      notes: ['E4', 'D4', 'C4', 'B3'],
-      duration: '4n',
-      pattern: 'descending',
-      volume: -15,
-      mood: 'disappointed'
-    };
-
-    this.stop();
-    this.playFromParams(failure);
-
-    // Auto-stop after 1.5 seconds
-    setTimeout(() => this.stop(), 1500);
-  }
-
-  /**
-   * Stop all music
-   */
-  stop() {
-    if (this.loop) {
-      this.loop.stop();
-      this.loop.dispose();
-      this.loop = null;
-    }
-    
-    Tone.Transport.stop();
-    Tone.Transport.cancel(0);
-  }
-
-  /**
-   * Cleanup
-   */
-  dispose() {
-    this.stop();
-    if (this.synth) {
-      this.synth.dispose();
-      this.synth = null;
-    }
-    this.initialized = false;
-  }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.10",
+    "eslint": "^9.36.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {}
 }

@@ -1,187 +1,228 @@
-// src/ai/musicParamGenerator.ts
+// src/music/generator.ts
+// NOTE: This file is meant to be used in the WEBVIEW (browser context), not in the extension backend
 
-export interface MusicParameters {
-  tempo: number;
-  notes: string[];
-  duration: string;
-  pattern: 'ascending' | 'descending' | 'chord' | 'arpeggio';
-  volume: number;
-  mood: string;
-}
+import { MusicParameters, ActivityState, VibeMode, MusicParamGenerator } from '../ai/musicParamGenerator';
 
-export type ActivityState = 'idle' | 'productive' | 'stuck' | 'testing' | 'test_passed' | 'test_failed';
-export type VibeMode = 'encouraging' | 'roasting' | 'neutral';
+// Tone.js will be loaded via CDN in the webview HTML
 
-export class MusicParamGenerator {
-  private apiKey: string;
+export class MusicGenerator {
+  private synth: any | null = null;
+  private loop: any | null = null;
+  private initialized = false;
+  private aiGenerator: MusicParamGenerator;
+  private currentParams: MusicParameters | null = null;
+  private Tone: any; // Reference to global Tone object from CDN
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  constructor(apiKey: string, ToneRef: any) {
+    this.aiGenerator = new MusicParamGenerator(apiKey);
+    this.Tone = ToneRef;
   }
 
   /**
-   * Generate music parameters using AI based on user state and vibe
+   * Initialize Tone.js
    */
-  async generateMusicParams(
-    state: ActivityState,
-    vibe: VibeMode
-  ): Promise<MusicParameters> {
-    const prompt = this.buildPrompt(state, vibe);
+  async initialize() {
+    if (this.initialized) {
+      return;
+    }
+
+    await this.Tone.start();
     
-    try {
-      // Call Claude API (or any LLM)
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 500,
-          messages: [{
-            role: 'user',
-            content: prompt
-          }]
-        })
-      });
+    // Create polyphonic synthesizer with reverb
+    this.synth = new this.Tone.PolySynth(this.Tone.Synth, {
+      oscillator: {
+        type: 'sine'
+      },
+      envelope: {
+        attack: 0.05,
+        decay: 0.3,
+        sustain: 0.4,
+        release: 0.8
+      }
+    }).toDestination();
 
-      const data = await response.json();
-      const params = this.parseAIResponse(data.content[0].text);
+    // Add reverb for atmosphere
+    const reverb = new this.Tone.Reverb({
+      decay: 2,
+      wet: 0.3
+    }).toDestination();
+
+    this.synth.connect(reverb);
+    
+    this.initialized = true;
+    console.log('✅ Music generator initialized');
+  }
+
+  /**
+   * Play music based on AI-generated parameters
+   */
+  async playForState(state: ActivityState, vibe: VibeMode) {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Stop current music
+    this.stop();
+
+    try {
+      // Generate parameters via AI
+      console.log(`🎵 Generating music for ${state} + ${vibe}...`);
+      this.currentParams = await this.aiGenerator.generateMusicParams(state, vibe);
       
-      return params;
+      console.log('🎶 Music params:', this.currentParams);
+
+      // Play the music
+      this.playFromParams(this.currentParams);
     } catch (error) {
-      console.error('AI music generation failed:', error);
-      // Fallback to preset
-      return this.getFallbackParams(state, vibe);
+      console.error('Failed to generate/play music:', error);
     }
   }
 
   /**
-   * Build the AI prompt
+   * Play music from parameters
    */
-  private buildPrompt(state: ActivityState, vibe: VibeMode): string {
-    return `You are a music composer AI. Generate musical parameters for a coding companion based on:
-
-State: ${state}
-Vibe: ${vibe}
-
-State meanings:
-- idle: User is not coding
-- productive: User is actively coding and making progress
-- stuck: User hasn't typed in a while, might be thinking
-- testing: Running tests
-- test_passed: Tests just passed
-- test_failed: Tests just failed
-
-Vibe meanings:
-- encouraging: Uplifting, supportive music
-- roasting: Playful, slightly sarcastic energy
-- neutral: Calm, focused, minimal
-
-Return ONLY a JSON object with these fields:
-{
-  "tempo": <60-180, integer>,
-  "notes": ["<note>", "<note>", ...],
-  "duration": "<8n|4n|2n|1n>",
-  "pattern": "<ascending|descending|chord|arpeggio>",
-  "volume": <-20 to 0, integer>,
-  "mood": "<brief description>"
-}
-
-Notes format: Use standard notation like "C4", "E4", "G4", "A3", etc.
-Duration: 8n=eighth note, 4n=quarter note, 2n=half note, 1n=whole note
-
-Examples:
-- Productive + Encouraging: Upbeat major chords, 120 tempo
-- Stuck + Roasting: Quirky, slightly dissonant, 80 tempo
-- Test Passed + Encouraging: Triumphant fanfare, 140 tempo
-
-Generate appropriate music for: ${state} + ${vibe}`;
-  }
-
-  /**
-   * Parse AI response into structured parameters
-   */
-  private parseAIResponse(text: string): MusicParameters {
-    try {
-      // Extract JSON from response (AI might wrap it in markdown)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-      
-      const params = JSON.parse(jsonMatch[0]);
-      
-      // Validate
-      if (!params.tempo || !params.notes || !params.duration) {
-        throw new Error('Invalid parameters');
-      }
-      
-      return params as MusicParameters;
-    } catch (error) {
-      console.error('Failed to parse AI response:', error);
-      throw error;
+  private playFromParams(params: MusicParameters) {
+    if (!this.synth) {
+      return;
     }
+
+    // Set volume
+    this.synth.volume.value = params.volume;
+
+    // Create playback pattern
+    const { notes, duration, pattern, tempo } = params;
+    
+    // Set BPM
+    this.Tone.Transport.bpm.value = tempo;
+
+    // Determine how to play based on pattern
+    switch (pattern) {
+      case 'chord':
+        this.playChord(notes, duration);
+        break;
+      case 'ascending':
+      case 'descending':
+        this.playSequence(notes, duration, pattern === 'descending');
+        break;
+      case 'arpeggio':
+        this.playArpeggio(notes, duration);
+        break;
+    }
+
+    // Start transport
+    this.Tone.Transport.start();
   }
 
   /**
-   * Fallback presets if AI fails
+   * Play chord (all notes together)
    */
-  private getFallbackParams(state: ActivityState, vibe: VibeMode): MusicParameters {
-    const presets: Record<string, MusicParameters> = {
-      'productive-encouraging': {
-        tempo: 120,
-        notes: ['C4', 'E4', 'G4', 'C5'],
-        duration: '4n',
-        pattern: 'ascending',
-        volume: -10,
-        mood: 'upbeat'
-      },
-      'stuck-encouraging': {
-        tempo: 80,
-        notes: ['A3', 'C4', 'E4'],
-        duration: '2n',
-        pattern: 'chord',
-        volume: -15,
-        mood: 'contemplative'
-      },
-      'test_passed-encouraging': {
-        tempo: 140,
-        notes: ['C5', 'E5', 'G5', 'C6'],
-        duration: '8n',
-        pattern: 'ascending',
-        volume: -5,
-        mood: 'triumphant'
-      },
-      'test_failed-encouraging': {
-        tempo: 90,
-        notes: ['E4', 'D4', 'C4'],
-        duration: '4n',
-        pattern: 'descending',
-        volume: -18,
-        mood: 'supportive'
-      },
-      'productive-roasting': {
-        tempo: 130,
-        notes: ['C4', 'Eb4', 'Gb4'],
-        duration: '8n',
-        pattern: 'arpeggio',
-        volume: -12,
-        mood: 'playful'
-      },
-      'idle-neutral': {
-        tempo: 70,
-        notes: ['C3', 'G3'],
-        duration: '1n',
-        pattern: 'chord',
-        volume: -20,
-        mood: 'ambient'
-      }
+  private playChord(notes: string[], duration: string) {
+    this.loop = new this.Tone.Loop((time: number) => {
+      this.synth?.triggerAttackRelease(notes, duration, time);
+    }, duration === '8n' ? '2n' : '1n'); // Repeat interval
+    
+    this.loop.start(0);
+  }
+
+  /**
+   * Play sequence (one note at a time)
+   */
+  private playSequence(notes: string[], duration: string, reverse: boolean) {
+    const sequence = reverse ? [...notes].reverse() : notes;
+    
+    const seq = new this.Tone.Sequence((time: number, note: string) => {
+      this.synth?.triggerAttackRelease(note, duration, time);
+    }, sequence, duration);
+    
+    seq.start(0);
+  }
+
+  /**
+   * Play arpeggio (broken chord pattern)
+   */
+  private playArpeggio(notes: string[], duration: string) {
+    // Create up-down arpeggio pattern
+    const pattern = [...notes, ...notes.slice().reverse().slice(1, -1)];
+    
+    const seq = new this.Tone.Sequence((time: number, note: string) => {
+      this.synth?.triggerAttackRelease(note, duration, time);
+    }, pattern, duration);
+    
+    seq.start(0);
+  }
+
+  /**
+   * Play celebration sound (for test pass)
+   */
+  async playCelebration() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    const celebration: MusicParameters = {
+      tempo: 160,
+      notes: ['C5', 'E5', 'G5', 'C6', 'E6'],
+      duration: '16n',
+      pattern: 'ascending',
+      volume: -5,
+      mood: 'triumphant'
     };
 
-    const key = `${state}-${vibe}`;
-    return presets[key] || presets['idle-neutral'];
+    this.stop();
+    this.playFromParams(celebration);
+
+    // Auto-stop after 2 seconds
+    setTimeout(() => this.stop(), 2000);
+  }
+
+  /**
+   * Play failure sound (for test fail)
+   */
+  async playFailure() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Sad trombone effect
+    const failure: MusicParameters = {
+      tempo: 60,
+      notes: ['E4', 'D4', 'C4', 'B3'],
+      duration: '4n',
+      pattern: 'descending',
+      volume: -15,
+      mood: 'disappointed'
+    };
+
+    this.stop();
+    this.playFromParams(failure);
+
+    // Auto-stop after 1.5 seconds
+    setTimeout(() => this.stop(), 1500);
+  }
+
+  /**
+   * Stop all music
+   */
+  stop() {
+    if (this.loop) {
+      this.loop.stop();
+      this.loop.dispose();
+      this.loop = null;
+    }
+    
+    this.Tone.Transport.stop();
+    this.Tone.Transport.cancel(0);
+  }
+
+  /**
+   * Cleanup
+   */
+  dispose() {
+    this.stop();
+    if (this.synth) {
+      this.synth.dispose();
+      this.synth = null;
+    }
+    this.initialized = false;
   }
 }
