@@ -9,9 +9,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -19,7 +17,32 @@
         "command": "vibe-driven-development.showCompanion",
         "title": "VDD: Show Vibe Companion"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Vibe Driven Development",
+      "properties": {
+        "vibe-driven-development.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Anthropic API key for AI music generation",
+          "order": 1
+        },
+        "vibe-driven-development.musicEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable AI-generated music",
+          "order": 2
+        },
+        "vibe-driven-development.musicVolume": {
+          "type": "number",
+          "default": -10,
+          "minimum": -30,
+          "maximum": 0,
+          "description": "Music volume in decibels (-30 to 0)",
+          "order": 3
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
