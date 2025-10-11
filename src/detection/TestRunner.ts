@@ -16,20 +16,30 @@ export class TestRunner {
       console.log('Terminal opened:', terminal.name);
     });
 
-    // Watch for test output
-    vscode.window.onDidWriteTerminalData(event => {
-      const data = event.data.toLowerCase();
+    // Watch for active terminal changes
+    vscode.window.onDidChangeActiveTerminal(terminal => {
+      if (terminal) {
+        console.log('Active terminal changed:', terminal.name);
+      }
+    });
+
+    // Note: onDidWriteTerminalData is not available in older VS Code versions
+    // Alternative: Watch for task execution
+    vscode.tasks.onDidEndTask(e => {
+      const taskName = e.execution.task.name.toLowerCase();
       
-      if (data.includes('test') && data.includes('running')) {
+      if (taskName.includes('test')) {
+        // Check task result (this is a simplified approach)
+        console.log('Task ended:', taskName);
+        // You would need to parse output or check exit codes
+      }
+    });
+
+    vscode.tasks.onDidStartTask(e => {
+      const taskName = e.execution.task.name.toLowerCase();
+      
+      if (taskName.includes('test')) {
         this.onTestStart();
-      }
-      
-      if (data.includes('passed') || data.includes('✓')) {
-        this.onTestPass();
-      }
-      
-      if (data.includes('failed') || data.includes('✗')) {
-        this.onTestFail();
       }
     });
   }
