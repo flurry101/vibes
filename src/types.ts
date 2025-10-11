@@ -1,5 +1,7 @@
 export type VibeMode = 'encouraging' | 'roasting' | 'neutral';
 
+export type MusicMode = 'automatic' | 'playlist';
+
 export type ActivityState = 
   | 'idle' 
   | 'productive' 

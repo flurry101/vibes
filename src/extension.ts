@@ -4,20 +4,32 @@ import { ActivityDetector } from './detection/ActivityDetector';
 import { MusicEngine } from './music/musicEngine';
 import { DialogueManager, DialogueContext } from './music/dialogueManager';
 import { TestRunner } from './detection/TestRunner';
-import { getAnimationFrame, getAnimationLength } from './utils/asciiArt';
-import { MusicData, ActivityState, VibeMode } from './types';
+import { MusicData, ActivityState, VibeMode, MusicMode } from './types';
+import { STATE_PLAYLISTS } from './music/curated';
 
 let activityDetector: ActivityDetector | undefined;
 let musicEngine: MusicEngine | undefined;
 let dialogueManager: DialogueManager | undefined;
 let testRunner: TestRunner | undefined;
 let currentPanel: vscode.WebviewPanel | undefined;
-let animationInterval: NodeJS.Timeout | undefined;
 let sessionStartTime: number = Date.now();
+let statusBarItem: vscode.StatusBarItem | undefined;
+let avatarVisible: boolean = true;
+let avatarMinimized: boolean = false;
+let musicMode: MusicMode = 'automatic';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Vibe-Driven Development extension activated! 🎵');
 
+	// Create status bar item with avatar indicator
+	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+	statusBarItem.text = '👩‍💻';
+	statusBarItem.tooltip = 'Vibe Companion - Click to toggle UI';
+	statusBarItem.command = 'vibe-driven-development.toggleUI';
+	statusBarItem.show();
+	context.subscriptions.push(statusBarItem);
+
+	// Register commands
 	let showCompanion = vscode.commands.registerCommand('vibe-driven-development.showCompanion', () => {
 		if (currentPanel) {
 			currentPanel.reveal(vscode.ViewColumn.Two);
@@ -32,42 +44,79 @@ export function activate(context: vscode.ExtensionContext) {
 				enableScripts: true,
 				retainContextWhenHidden: true,
 				localResourceRoots: [
-					vscode.Uri.file(path.join(context.extensionPath, 'dist'))
+					vscode.Uri.file(path.join(context.extensionPath, 'dist')),
+					vscode.Uri.file(path.join(context.extensionPath, 'assets'))
 				]
 			}
 		);
 
-		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
+		// Prepare image URIs
+		const imageUris = {
+			idle: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'lofi-girl-sleeping-wallpaper-1920x1200_6.jpg'))),
+			productive: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'images.jpg'))),
+			stuck: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'images (1).jpg'))),
+			procrastinating: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', '1af93018ad8cf86bd2f441ff67057858.jpg'))),
+			testing: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'maxresdefault.jpg'))),
+			building: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'maxresdefault.jpg'))),
+			test_passed: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'maxresdefault.jpg'))),
+			test_failed: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'maxresdefault.jpg')))
+		};
 
-		// Initialize Music Engine
+		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview, imageUris);
+
+		// Send initial state
+		currentPanel.webview.postMessage({
+			command: 'init',
+			musicMode: musicMode
+		});
+
+		// Initialize components
 		musicEngine = new MusicEngine((data: MusicData) => {
 			currentPanel?.webview.postMessage(data);
 		});
 
+		dialogueManager = new DialogueManager(true, 'rare');
+
 		activityDetector = new ActivityDetector((newState) => {
 			console.log('📡 Activity state changed:', newState);
+
+			// Update status bar based on state
+			updateStatusBar(newState);
 
 			currentPanel?.webview.postMessage({
 				command: 'stateChanged',
 				state: newState
 			});
 
-			musicEngine?.playStateMusic(newState);
+			currentPanel?.webview.postMessage({
+				command: 'updateAvatarState',
+				state: newState
+			});
+
+			if (musicMode === 'automatic') {
+				musicEngine?.playStateMusic(newState);
+			} else {
+				// Playlist mode - send playlist data
+				const playlist = STATE_PLAYLISTS[newState] || [];
+				currentPanel?.webview.postMessage({
+					command: 'playPlaylist',
+					playlist: playlist
+				});
+			}
+			handleDialogue(newState);
 		});
 
-		testRunner = new TestRunner(activityDetector);
+		if (activityDetector) {
+			testRunner = new TestRunner(activityDetector);
+		}
 
+		// Handle messages from Webview
 		currentPanel.webview.onDidReceiveMessage(
 			message => {
 				switch (message.command) {
 					case 'vibeChanged':
 						console.log('Vibe changed to:', message.vibe);
 						musicEngine?.setVibe(message.vibe);
-						// Restart animation with new vibe
-						if (activityDetector) {
-							const currentState = getCurrentState();
-							startAnimation(currentState, message.vibe);
-						}
 						break;
 					case 'requestHint':
 						currentPanel?.webview.postMessage({
@@ -75,17 +124,58 @@ export function activate(context: vscode.ExtensionContext) {
 							text: 'Try breaking this into smaller functions!'
 						});
 						break;
-					case 'musicStatus':
-						console.log('Music status:', message.status);
-						break;
 					case 'getMetrics':
-						if (activityDetector) {
-							const metrics = activityDetector.getMetrics();
-							currentPanel?.webview.postMessage({
-								command: 'metrics',
-								data: metrics
-							});
+						const metrics = activityDetector?.getMetrics();
+						currentPanel?.webview.postMessage({
+							command: 'metrics',
+							data: metrics
+						});
+						break;
+					case 'toggleDialogue':
+						if (dialogueManager) {
+							dialogueManager.setEnabled(message.enabled);
 						}
+						break;
+					case 'setDialogueFrequency':
+						if (dialogueManager) {
+							dialogueManager.setFrequency(message.frequency);
+						}
+						break;
+					case 'playPlaylist':
+						// Open first playlist item in browser
+						if (message.playlist && message.playlist.length > 0) {
+							const firstItem = message.playlist[0];
+							vscode.env.openExternal(vscode.Uri.parse(firstItem.url));
+						}
+						break;
+					case 'toggleMusicMode':
+						// This is sent from webview, handle in extension
+						break;
+					case 'changeBeats':
+						currentPanel?.webview.postMessage({
+							command: 'changeBeats'
+						});
+						break;
+					case 'changeRhythm':
+						currentPanel?.webview.postMessage({
+							command: 'changeRhythm'
+						});
+						break;
+					case 'changeSpeed':
+						currentPanel?.webview.postMessage({
+							command: 'changeSpeed'
+						});
+						break;
+					case 'startMusic':
+						// Start music manually
+						const currentState = activityDetector?.getCurrentState() || 'idle';
+						musicEngine?.playStateMusic(currentState);
+						break;
+					case 'toggleUI':
+						// Toggle UI compact mode
+						currentPanel?.webview.postMessage({
+							command: 'toggleUI'
+						});
 						break;
 				}
 			},
@@ -95,58 +185,129 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.onDidDispose(() => {
 			currentPanel = undefined;
-			activityDetector?.dispose();
-			musicEngine?.dispose();
-			testRunner?.dispose();
-			if (animationInterval) {
-				clearInterval(animationInterval);
-			}
+			// Keep components running for background functionality
+			// Only dispose when extension deactivates
 		});
 	});
 
-	context.subscriptions.push(showCompanion);
+	// Keyboard shortcuts
+	let toggleUI = vscode.commands.registerCommand('vibe-driven-development.toggleUI', () => {
+		currentPanel?.webview.postMessage({
+			command: 'toggleUI'
+		});
+	});
+
+	let minimizeAvatar = vscode.commands.registerCommand('vibe-driven-development.minimizeAvatar', () => {
+		avatarMinimized = !avatarMinimized;
+		currentPanel?.webview.postMessage({
+			command: 'minimizeAvatar',
+			minimized: avatarMinimized
+		});
+	});
+
+	let switchAnimationMode = vscode.commands.registerCommand('vibe-driven-development.switchAnimationMode', async () => {
+		const states = ['idle', 'productive', 'stuck', 'testing', 'test_passed', 'test_failed', 'building'];
+		const selected = await vscode.window.showQuickPick(states, {
+			placeHolder: 'Select animation state'
+		});
+		if (selected) {
+			currentPanel?.webview.postMessage({
+				command: 'updateAvatarState',
+				state: selected
+			});
+		}
+	});
+
+	let pauseAnimations = vscode.commands.registerCommand('vibe-driven-development.pauseAnimations', () => {
+		currentPanel?.webview.postMessage({
+			command: 'pauseAnimations'
+		});
+	});
+
+	let customizeAvatar = vscode.commands.registerCommand('vibe-driven-development.customizeAvatar', async () => {
+		const themes = ['cyberpunk', 'cozy', 'minimal', 'neon'];
+		const selected = await vscode.window.showQuickPick(themes, {
+			placeHolder: 'Select avatar theme'
+		});
+		if (selected) {
+			currentPanel?.webview.postMessage({
+				command: 'changeTheme',
+				theme: selected
+			});
+		}
+	});
+
+	let resetPosition = vscode.commands.registerCommand('vibe-driven-development.resetPosition', () => {
+		currentPanel?.webview.postMessage({
+			command: 'resetPosition'
+		});
+	});
+
+	let toggleMusicMode = vscode.commands.registerCommand('vibe-driven-development.toggleMusicMode', () => {
+		musicMode = musicMode === 'automatic' ? 'playlist' : 'automatic';
+		vscode.window.showInformationMessage(`Music mode switched to: ${musicMode}`);
+		// Optionally trigger current state music
+		const currentState = activityDetector?.getCurrentState();
+		if (currentState) {
+			if (musicMode === 'automatic') {
+				musicEngine?.playStateMusic(currentState);
+			} else {
+				const playlist = STATE_PLAYLISTS[currentState] || [];
+				currentPanel?.webview.postMessage({
+					command: 'playPlaylist',
+					playlist: playlist
+				});
+			}
+		}
+	});
+
+	// Register all commands
+	context.subscriptions.push(
+		showCompanion,
+		toggleUI,
+		minimizeAvatar,
+		switchAnimationMode,
+		pauseAnimations,
+		customizeAvatar,
+		resetPosition,
+		toggleMusicMode
+	);
 
 	// Auto-show on startup
 	vscode.commands.executeCommand('vibe-driven-development.showCompanion');
 }
 
-function getCurrentState(): ActivityState {
-	// Helper to get current state from detector
-	return 'idle'; // Default, will be updated by actual state
+export function deactivate() {
+	activityDetector?.dispose();
+	musicEngine?.dispose();
+	testRunner?.dispose();
+	currentPanel?.dispose();
 }
 
-function startAnimation(state: ActivityState, vibe: VibeMode) {
-	if (animationInterval) {
-		clearInterval(animationInterval);
-	}
-
-	const animLength = getAnimationLength(vibe, state);
-	let frameIndex = 0;
-
-	// Update animation frame
-	const updateFrame = () => {
-		const frame = getAnimationFrame(vibe, state, frameIndex);
-		currentPanel?.webview.postMessage({
-			command: 'updateCompanion',
-			emoji: frame
-		});
-		frameIndex = (frameIndex + 1) % animLength;
+function updateStatusBar(state: ActivityState) {
+	if (!statusBarItem) {return;};
+	
+	const stateEmojis: Record<ActivityState, string> = {
+		idle: '💤',
+		productive: '⚡',
+		stuck: '🤔',
+		procrastinating: '😴',
+		testing: '🧪',
+		building: '🔨',
+		test_passed: '✅',
+		test_failed: '❌'
 	};
-
-	// Initial frame
-	updateFrame();
-
-	// Animate every 500ms
-	animationInterval = setInterval(updateFrame, 500);
+	
+	statusBarItem.text = `👩‍💻 ${stateEmojis[state] || '💻'}`;
+	statusBarItem.tooltip = `Vibe Companion - ${state}`;
 }
 
 async function handleDialogue(state: ActivityState) {
-	if (!dialogueManager) {return;}
+	if (!dialogueManager) {return;};
 
 	const sessionDuration = Date.now() - sessionStartTime;
 	let context: DialogueContext | null = null;
 
-	// Map activity states to dialogue contexts
 	switch (state) {
 		case 'test_passed':
 			context = 'triumph';
@@ -176,7 +337,7 @@ async function handleDialogue(state: ActivityState) {
 	}
 }
 
-function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): string {
+function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview, imageUris: Record<string, vscode.Uri>): string {
 	return `<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -186,22 +347,302 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 		<title>Vibe Companion</title>
 		<style>
 			* { margin: 0; padding: 0; box-sizing: border-box; }
+			
+			:root {
+				--pixel-size: 4px;
+				--avatar-size: 32;
+				--glow-color: #00ffcc;
+				--hoodie-color: #6b46c1;
+				--hoodie-dark: #553c9a;
+				--skin-color: #fdbcb4;
+				--hair-color: #2c1810;
+				--glasses-color: #1a1a1a;
+				--headphones-color: #1f2937;
+				--headphones-accent: #dc2626;
+			}
+			
 			body {
 				font-family: var(--vscode-font-family);
 				color: var(--vscode-foreground);
 				background: var(--vscode-editor-background);
 				padding: 20px;
 				overflow-y: auto;
+				position: relative;
 			}
-			.container { 
-				max-width: 500px; 
-				margin: 0 auto; 
-				text-align: center; 
+			
+			.container {
+				max-width: 500px;
+				margin: 0 auto;
+				text-align: center;
+				position: relative;
+				transition: all 0.3s ease;
 			}
+
+			.container.compact {
+				max-width: 220px;
+			}
+
+			.container.compact .vibe-selector,
+			.container.compact .message,
+			.container.compact .state,
+			.container.compact .controls,
+			.container.compact .keyboard-shortcuts {
+				display: none;
+			}
+
+			.container.compact h1 {
+				display: none;
+			}
+			
 			h1 { 
 				margin-bottom: 20px; 
 				font-size: 24px; 
 			}
+			
+			/* IMAGE AVATAR CONTAINER */
+			.avatar-wrapper {
+				position: relative;
+				display: inline-block;
+				margin: 20px auto;
+				transition: all 0.3s ease;
+				cursor: pointer;
+			}
+
+			.avatar-wrapper.minimized {
+				transform: scale(0.5);
+				position: fixed;
+				bottom: 20px;
+				right: 20px;
+				z-index: 1000;
+			}
+
+			.avatar-wrapper.hidden {
+				display: none;
+			}
+
+			.image-avatar-container {
+				position: relative;
+				width: 200px;
+				height: 200px;
+				filter: drop-shadow(0 0 10px var(--glow-color));
+				transition: filter 0.3s ease;
+				border-radius: 10px;
+				overflow: hidden;
+			}
+
+			.avatar-image {
+				width: 100%;
+				height: 100%;
+				object-fit: cover;
+				border-radius: 10px;
+			}
+			
+			/* Animation states */
+			@keyframes idle-breathing {
+				0%, 100% { transform: translateY(0) scale(1); }
+				50% { transform: translateY(-2px) scale(1.01); }
+			}
+			
+			@keyframes typing {
+				0%, 100% { transform: translateX(0); }
+				25% { transform: translateX(-1px); }
+				75% { transform: translateX(1px); }
+			}
+			
+			@keyframes stuck-thinking {
+				0%, 100% { transform: rotate(0deg); }
+				25% { transform: rotate(-2deg); }
+				75% { transform: rotate(2deg); }
+			}
+			
+			@keyframes error-shake {
+				0%, 100% { transform: translateX(0); }
+				10% { transform: translateX(-2px) rotate(-1deg); }
+				20% { transform: translateX(2px) rotate(1deg); }
+				30% { transform: translateX(-2px) rotate(-1deg); }
+				40% { transform: translateX(2px) rotate(1deg); }
+				50% { transform: translateX(0) rotate(0deg); }
+			}
+			
+			@keyframes success-bounce {
+				0%, 100% { transform: translateY(0) scale(1); }
+				30% { transform: translateY(-5px) scale(1.05); }
+				60% { transform: translateY(2px) scale(0.98); }
+			}
+			
+			@keyframes building-pulse {
+				0%, 100% { 
+					filter: drop-shadow(0 0 10px var(--glow-color));
+				}
+				50% { 
+					filter: drop-shadow(0 0 20px var(--glow-color)) brightness(1.1);
+				}
+			}
+			
+			@keyframes blink {
+				0%, 90%, 100% { opacity: 1; }
+				95% { opacity: 0; }
+			}
+			
+			/* State classes */
+			.avatar-state-idle {
+				animation: idle-breathing 4s ease-in-out infinite;
+			}
+			
+			.avatar-state-idle .pixel-avatar-container {
+				filter: drop-shadow(0 0 5px rgba(0, 255, 204, 0.3));
+			}
+			
+			.avatar-state-productive {
+				animation: typing 0.3s ease-in-out infinite;
+			}
+			
+			.avatar-state-productive .pixel-avatar-container {
+				filter: drop-shadow(0 0 15px rgba(255, 200, 0, 0.6));
+			}
+			
+			.avatar-state-stuck {
+				animation: stuck-thinking 3s ease-in-out infinite;
+			}
+			
+			.avatar-state-stuck .pixel-avatar-container {
+				filter: drop-shadow(0 0 10px rgba(255, 100, 100, 0.4));
+			}
+			
+			.avatar-state-test_failed {
+				animation: error-shake 0.5s ease-in-out;
+			}
+			
+			.avatar-state-test_failed .pixel-avatar-container {
+				filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.5));
+			}
+			
+			.avatar-state-test_passed {
+				animation: success-bounce 1s ease-in-out;
+			}
+			
+			.avatar-state-test_passed .pixel-avatar-container {
+				filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.6));
+			}
+			
+			.avatar-state-building {
+				animation: building-pulse 2s ease-in-out infinite;
+			}
+			
+			.avatar-state-testing .pixel-avatar-container {
+				filter: drop-shadow(0 0 12px rgba(255, 255, 0, 0.5));
+			}
+			
+			/* Blinking eyes animation */
+			.eyes-container {
+				animation: blink 5s infinite;
+			}
+			
+			/* Thought bubble */
+			.thought-bubble {
+				position: absolute;
+				top: -40px;
+				right: -20px;
+				background: var(--vscode-editor-background);
+				border: 2px solid var(--vscode-foreground);
+				border-radius: 50%;
+				padding: 5px 10px;
+				font-size: 16px;
+				opacity: 0;
+				transition: opacity 0.3s ease;
+			}
+			
+			.thought-bubble.show {
+				opacity: 1;
+			}
+			
+			.thought-bubble::before,
+			.thought-bubble::after {
+				content: '';
+				position: absolute;
+				background: var(--vscode-editor-background);
+				border: 2px solid var(--vscode-foreground);
+				border-radius: 50%;
+			}
+			
+			.thought-bubble::before {
+				width: 10px;
+				height: 10px;
+				bottom: -10px;
+				right: 15px;
+			}
+			
+			.thought-bubble::after {
+				width: 6px;
+				height: 6px;
+				bottom: -15px;
+				right: 10px;
+			}
+			
+			/* Code particles floating around */
+			.code-particles {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				pointer-events: none;
+				overflow: hidden;
+			}
+			
+			.code-particle {
+				position: absolute;
+				color: var(--glow-color);
+				opacity: 0.3;
+				font-family: 'Courier New', monospace;
+				font-size: 10px;
+				animation: float-around 10s linear infinite;
+				text-shadow: 0 0 5px currentColor;
+			}
+			
+			@keyframes float-around {
+				0% {
+					transform: translate(0, 100vh) rotate(0deg);
+					opacity: 0;
+				}
+				10% {
+					opacity: 0.3;
+				}
+				90% {
+					opacity: 0.3;
+				}
+				100% {
+					transform: translate(100px, -100vh) rotate(360deg);
+					opacity: 0;
+				}
+			}
+			
+			/* Theme variations */
+			.theme-cyberpunk {
+				--glow-color: #00ffcc;
+				--hoodie-color: #1a0033;
+				--headphones-accent: #ff00ff;
+			}
+			
+			.theme-cozy {
+				--glow-color: #ffcc99;
+				--hoodie-color: #8b6f47;
+				--headphones-accent: #ff9966;
+			}
+			
+			.theme-minimal {
+				--glow-color: #cccccc;
+				--hoodie-color: #333333;
+				--headphones-accent: #666666;
+			}
+			
+			.theme-neon {
+				--glow-color: #ff00ff;
+				--hoodie-color: #000033;
+				--headphones-accent: #00ffff;
+			}
+			
+			/* Controls */
 			.vibe-selector {
 				display: flex;
 				gap: 10px;
@@ -209,6 +650,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				justify-content: center;
 				flex-wrap: wrap;
 			}
+			
 			.vibe-btn {
 				padding: 12px 20px;
 				border: 2px solid var(--vscode-button-border);
@@ -219,23 +661,16 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				font-size: 14px;
 				transition: all 0.2s;
 			}
+			
 			.vibe-btn:hover {
 				background: var(--vscode-button-hoverBackground);
 			}
+			
 			.vibe-btn.active {
 				background: var(--vscode-button-secondaryBackground);
 				border-color: var(--vscode-focusBorder);
 			}
-			.companion {
-				font-size: 80px;
-				margin: 30px 0;
-				animation: float 3s ease-in-out infinite;
-				user-select: none;
-			}
-			@keyframes float {
-				0%, 100% { transform: translateY(0px); }
-				50% { transform: translateY(-10px); }
-			}
+			
 			.message {
 				font-size: 16px;
 				margin: 20px 0;
@@ -247,24 +682,29 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				align-items: center;
 				justify-content: center;
 			}
+			
 			.state {
 				font-size: 12px;
 				color: var(--vscode-descriptionForeground);
 				margin-top: 10px;
 			}
-			.idle-time {
-				font-size: 18px;
-				font-weight: bold;
-				color: var(--vscode-foreground);
-				margin: 15px 0;
-				text-align: center;
-			}
+			
 			.controls {
-				margin: 20px 0;
+				margin: 30px 0;
+				display: flex;
+				flex-direction: column;
+				gap: 15px;
+				align-items: center;
+			}
+			
+			.control-row {
 				display: flex;
 				gap: 10px;
-				justify-content: center;
+				align-items: center;
+				width: 100%;
+				max-width: 300px;
 			}
+			
 			.control-btn {
 				padding: 10px 20px;
 				border: 1px solid var(--vscode-button-border);
@@ -273,483 +713,435 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				cursor: pointer;
 				border-radius: 4px;
 				font-size: 14px;
-				transition: all 0.2s;
+				flex: 1;
 			}
+			
 			.control-btn:hover {
 				background: var(--vscode-button-hoverBackground);
 			}
-			.control-btn:active {
-				transform: scale(0.95);
-			}
-			.volume-control {
-				margin-top: 15px;
-			}
-			.volume-control label {
-				display: block;
-				margin-bottom: 5px;
-				font-size: 12px;
-			}
-			.volume-control input {
-				width: 200px;
-			}
-			.advanced-controls {
+			
+			.keyboard-shortcuts {
 				margin-top: 20px;
+				padding: 15px;
+				background: var(--vscode-editor-inactiveSelectionBackground);
+				border-radius: 8px;
+				font-size: 11px;
+				text-align: left;
+			}
+			
+			.shortcut-row {
 				display: flex;
-				flex-direction: column;
-				gap: 15px;
+				justify-content: space-between;
+				margin: 5px 0;
 			}
-			.control-group {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-			}
-			.control-group label {
-				min-width: 60px;
-				font-size: 12px;
-			}
-			.control-group input[type="range"] {
-				width: 120px;
-			}
-			.control-group select {
-				padding: 4px 8px;
-				border: 1px solid var(--vscode-button-border);
+			
+			.shortcut-key {
+				font-family: monospace;
 				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
+				padding: 2px 6px;
 				border-radius: 3px;
+				font-size: 10px;
+			}
+			
+			/* Avatar dragging */
+			.avatar-wrapper.draggable {
+				cursor: move;
+			}
+			
+			.avatar-wrapper.dragging {
+				opacity: 0.7;
+				z-index: 1001;
+			}
+			
+			.paused {
+				animation-play-state: paused !important;
 			}
 		</style>
 	</head>
 	<body>
-		<div class="container">
+		<div class="container" id="mainContainer">
 			<h1>🎵 Vibe Companion</h1>
-			
+
 			<div class="vibe-selector">
 				<button class="vibe-btn active" data-vibe="encouraging">😊 Encouraging</button>
 				<button class="vibe-btn" data-vibe="roasting">😏 Roasting</button>
 				<button class="vibe-btn" data-vibe="neutral">🤖 Neutral</button>
 			</div>
 
-			<div class="companion" id="companion">😊</div>
-			
+			<!-- IMAGE AVATAR -->
+			<div class="avatar-wrapper" id="avatarWrapper">
+				<div class="avatar-state-idle" id="avatarState">
+					<div class="image-avatar-container">
+						<img id="avatarImage" class="avatar-image" src="" alt="Coding Avatar">
+						<div class="thought-bubble" id="thoughtBubble"></div>
+					</div>
+					<div class="code-particles" id="codeParticles"></div>
+				</div>
+			</div>
+
 			<div class="message" id="message">
 				Ready to vibe! Start coding...
 			</div>
 
-			<div class="state" id="state">State: idle</div>
-
-			<div class="idle-time" id="idleTime">Idle: 0s</div>
-
-			<div class="music-status" id="musicStatus">
-				🎵 Click a vibe button to start music
+			<div class="state" id="state">
+				State: idle
 			</div>
 
 			<div class="controls">
-				<button class="control-btn" id="playBtn">▶️ Play</button>
-				<button class="control-btn" id="stopBtn">⏹️ Stop</button>
+				<div class="control-row">
+					<button class="control-btn" id="startMusicBtn">🎵 Start Music</button>
+					<button class="control-btn" id="musicModeBtn">🎵 Auto</button>
+				</div>
+				<div class="control-row">
+					<button class="control-btn" id="pauseBtn">⏸️ Pause</button>
+					<button class="control-btn" id="themeBtn">🎨 Theme</button>
+				</div>
+				<div class="control-row">
+					<button class="control-btn" id="changeBeatsBtn">🥁 Beats</button>
+					<button class="control-btn" id="changeRhythmBtn">🎼 Rhythm</button>
+					<button class="control-btn" id="changeSpeedBtn">⚡ Speed</button>
+				</div>
 			</div>
 
-			<div class="volume-control">
-				<label for="volume">Volume</label>
-				<input type="range" id="volume" min="-30" max="0" value="-12" step="1">
-			</div>
-
-			<div class="advanced-controls">
-				<div class="control-group">
-					<label for="speed">Speed</label>
-					<input type="range" id="speed" min="0.5" max="2" value="1" step="0.1">
-					<span id="speedValue">1.0x</span>
+			<div class="keyboard-shortcuts">
+				<div style="font-weight: bold; margin-bottom: 10px;">⌨️ Keyboard Shortcuts</div>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+U</span></span>
+					<span>Toggle UI mode</span>
 				</div>
-				<div class="control-group">
-					<label for="rhythm">Rhythm</label>
-					<select id="rhythm">
-						<option value="normal">Normal</option>
-						<option value="syncopated">Syncopated</option>
-						<option value="swing">Swing</option>
-						<option value="random">Random</option>
-					</select>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+T</span></span>
+					<span>Toggle music mode</span>
 				</div>
-				<div class="control-group">
-					<label for="beats">Beats</label>
-					<select id="beats">
-						<option value="4">4/4</option>
-						<option value="3">3/4</option>
-						<option value="6">6/8</option>
-						<option value="5">5/4</option>
-					</select>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+S</span></span>
+					<span>Switch state</span>
+				</div>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+P</span></span>
+					<span>Pause animations</span>
+				</div>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+C</span></span>
+					<span>Customize theme</span>
+				</div>
+				<div class="shortcut-row">
+					<span><span class="shortcut-key">Ctrl+Alt+R</span></span>
+					<span>Reset position</span>
 				</div>
 			</div>
 		</div>
 
 		<script>
 			const vscode = acquireVsCodeApi();
-			
+
 			let currentVibe = 'encouraging';
 			let currentState = 'idle';
-			let musicInitialized = false;
-			let currentLoop = null;
-			let synth = null;
-			let isPlaying = false;
-			let speedMultiplier = 1;
-			let rhythmType = 'normal';
-			let beatsPerMeasure = 4;
+			let isPaused = false;
+			let currentTheme = 'cyberpunk';
+			let blinkInterval = null;
+			let thoughtBubbleTimeout = null;
+			let isCompact = false;
+			let musicMode = 'automatic';
 
-			// 🎵 MUSIC SETUP
-			async function initMusic() {
-				if (musicInitialized) return;
-				
-				try {
-					await Tone.start();
-					console.log('🎵 Audio context started');
-					
-					// Create synth
-					synth = new Tone.PolySynth(Tone.Synth, {
-						oscillator: { type: 'sine' },
-						envelope: {
-							attack: 0.1,
-							decay: 0.2,
-							sustain: 0.3,
-							release: 1
-						}
-					}).toDestination();
-					
-					synth.volume.value = -12;
-					musicInitialized = true;
-				} catch (error) {
-					console.error('Failed to initialize music:', error);
+			const imageUris = ${JSON.stringify(Object.fromEntries(Object.entries(imageUris).map(([k, v]) => [k, v.toString()])))};
+			
+
+			// Generate floating code particles
+			function generateCodeParticles() {
+				const particlesContainer = document.getElementById('codeParticles');
+				particlesContainer.innerHTML = '';
+
+				const codeSnippets = ['{', '}', '()', '=>', 'const', 'let', 'function', 'class', 'import', 'export'];
+
+				for (let i = 0; i < 15; i++) {
+					const particle = document.createElement('div');
+					particle.className = 'code-particle';
+					particle.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
+					particle.style.left = Math.random() * 100 + '%';
+					particle.style.top = Math.random() * 100 + '%';
+					particle.style.animationDelay = Math.random() * 10 + 's';
+					particlesContainer.appendChild(particle);
 				}
 			}
 
-			// 🎵 MUSIC CONFIGS (from task requirements)
-			const musicConfigs = {
-				'idle-encouraging': {
-					tempo: 70, notes: ['C3', 'E3', 'G3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'calm ambient'
-				},
-				'productive-encouraging': {
-					tempo: 128, notes: ['C4', 'E4', 'G4', 'B4'], duration: '4n', pattern: 'arpeggio', volume: -10, mood: 'energetic flow'
-				},
-				'stuck-encouraging': {
-					tempo: 80, notes: ['A3', 'C4', 'E4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'contemplative support'
-				},
-				'procrastinating-encouraging': {
-					tempo: 110, notes: ['D4', 'F4', 'A4'], duration: '8n', pattern: 'ascending', volume: -12, mood: 'gentle urgency'
-				},
-				'testing-encouraging': {
-					tempo: 100, notes: ['G3', 'B3', 'D4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'hopeful suspense'
-				},
-				'building-encouraging': {
-					tempo: 60, notes: ['C3', 'G3'], duration: '1n', pattern: 'chord', volume: -18, mood: 'patient waiting'
-				},
-				'test_passed-encouraging': {
-					tempo: 150, notes: ['C5', 'E5', 'G5', 'C6'], duration: '16n', pattern: 'ascending', volume: -5, mood: 'joyful triumph'
-				},
-				'test_failed-encouraging': {
-					tempo: 70, notes: ['A3', 'F3', 'C3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'sympathetic comfort'
-				},
+			// Update avatar state
+			function updateAvatarState(state) {
+				currentState = state;
+				document.getElementById('state').textContent = 'State: ' + state;
+				document.getElementById('avatarState').className = 'avatar-state-' + state;
 
-				'idle-roasting': {
-					tempo: 75, notes: ['C3', 'Eb3', 'Gb3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'sarcastic judgment'
-				},
-				'productive-roasting': {
-					tempo: 135, notes: ['C4', 'Eb4', 'Gb4', 'A4'], duration: '8n', pattern: 'arpeggio', volume: -12, mood: 'skeptical energy'
-				},
-				'stuck-roasting': {
-					tempo: 85, notes: ['E4', 'Eb4', 'D4', 'C4'], duration: '4n', pattern: 'descending', volume: -15, mood: 'mocking pity'
-				},
-				'procrastinating-roasting': {
-					tempo: 120, notes: ['Bb3', 'C4', 'Bb3'], duration: '8n', pattern: 'arpeggio', volume: -10, mood: 'annoyed impatience'
-				},
-				'testing-roasting': {
-					tempo: 95, notes: ['G3', 'Bb3', 'Db4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'doubtful anticipation'
-				},
-				'building-roasting': {
-					tempo: 55, notes: ['C3', 'F3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'bored waiting'
-				},
-				'test_passed-roasting': {
-					tempo: 140, notes: ['C5', 'Eb5', 'G5'], duration: '16n', pattern: 'ascending', volume: -8, mood: 'surprised approval'
-				},
-				'test_failed-roasting': {
-					tempo: 75, notes: ['E4', 'D4', 'C4', 'B3'], duration: '4n', pattern: 'descending', volume: -12, mood: 'told you so'
-				},
-
-				'idle-neutral': {
-					tempo: 72, notes: ['C3', 'G3', 'C4'], duration: '1n', pattern: 'chord', volume: -18, mood: 'neutral standby'
-				},
-				'productive-neutral': {
-					tempo: 120, notes: ['C4', 'D4', 'E4', 'G4'], duration: '4n', pattern: 'ascending', volume: -12, mood: 'systematic efficiency'
-				},
-				'stuck-neutral': {
-					tempo: 80, notes: ['A3', 'E4', 'A4'], duration: '2n', pattern: 'chord', volume: -15, mood: 'analytical pause'
-				},
-				'procrastinating-neutral': {
-					tempo: 105, notes: ['C4', 'E4', 'C4'], duration: '8n', pattern: 'arpeggio', volume: -13, mood: 'deviation detected'
-				},
-				'testing-neutral': {
-					tempo: 95, notes: ['C4', 'E4', 'G4'], duration: '4n', pattern: 'chord', volume: -12, mood: 'execution in progress'
-				},
-				'building-neutral': {
-					tempo: 60, notes: ['C3', 'E3'], duration: '1n', pattern: 'chord', volume: -20, mood: 'compilation running'
-				},
-				'test_passed-neutral': {
-					tempo: 130, notes: ['C5', 'E5', 'G5'], duration: '8n', pattern: 'ascending', volume: -10, mood: 'success confirmed'
-				},
-				'test_failed-neutral': {
-					tempo: 75, notes: ['C4', 'Bb3', 'Ab3'], duration: '4n', pattern: 'descending', volume: -15, mood: 'error detected'
-				}
-			};
-
-			// 🎵 PLAY MUSIC FOR STATE
-			function playMusicForState(state) {
-				if (!musicInitialized) {
-					return;
+				// Update avatar image based on state
+				const avatarImg = document.getElementById('avatarImage');
+				if (avatarImg) {
+					const imageSrc = imageUris[state] || imageUris['idle'] || '';
+					if (imageSrc) {
+						avatarImg.src = imageSrc;
+						avatarImg.style.display = 'block'; // Ensure it's visible
+						avatarImg.onerror = () => {
+							console.log('Image failed to load:', imageSrc);
+							avatarImg.style.display = 'none';
+						};
+					} else {
+						avatarImg.style.display = 'none';
+					}
 				}
 
-				try {
-					// Stop current loop
-					if (currentLoop) {
-						currentLoop.stop();
-						currentLoop.dispose();
-						currentLoop = null;
-					}
-
-					const configKey = state + '-' + currentVibe;
-					const config = musicConfigs[configKey] || musicConfigs['idle-encouraging'];
-
-					// Apply speed multiplier
-					Tone.Transport.bpm.value = config.tempo * speedMultiplier;
-
-					// Set synth volume
-					synth.volume.value = config.volume;
-
-					let index = 0;
-					let patternIndex = 0;
-
-					// Convert duration to Tone.js format
-					const durationMap = {
-						'16n': '16n',
-						'8n': '8n',
-						'4n': '4n',
-						'2n': '2n',
-						'1n': '1n'
-					};
-					let interval = durationMap[config.duration] || '4n';
-
-					// Apply rhythm modifications
-					switch (rhythmType) {
-						case 'syncopated':
-							interval = Tone.Time(interval).mult(1.5).toString();
-							break;
-						case 'swing':
-							interval = Tone.Time(interval).mult(0.75).toString();
-							break;
-						case 'random':
-							// Will be handled in the loop
-							break;
-					}
-
-					currentLoop = new Tone.Loop(time => {
-						let note = config.notes[index];
-						let actualInterval = interval;
-
-						// Apply rhythm randomness
-						if (rhythmType === 'random') {
-							actualInterval = Math.random() > 0.7 ? Tone.Time(interval).mult(2).toString() : interval;
-						}
-
-						// Apply pattern logic
-						switch (config.pattern) {
-							case 'arpeggio':
-								note = config.notes[patternIndex % config.notes.length];
-								patternIndex++;
-								break;
-							case 'ascending':
-								note = config.notes[Math.min(patternIndex, config.notes.length - 1)];
-								patternIndex = (patternIndex + 1) % (config.notes.length * 2);
-								break;
-							case 'descending':
-								note = config.notes[config.notes.length - 1 - (patternIndex % config.notes.length)];
-								patternIndex++;
-								break;
-							case 'chord':
-								// Play all notes as chord
-								config.notes.forEach(n => {
-									synth.triggerAttackRelease(n, actualInterval, time);
-								});
-								index = (index + 1) % config.notes.length;
-								return;
-						}
-
-						synth.triggerAttackRelease(note, actualInterval, time);
-						index = (index + 1) % config.notes.length;
-					}, interval).start(0);
-
-					Tone.Transport.start();
-					updateMusicStatus('Playing: ' + state + ' (' + config.tempo + ' BPM) - ' + config.mood);
-				} catch (error) {
-					console.error('Error playing music:', error);
-					updateMusicStatus('Playback error: ' + error.message);
+				// Show thought bubble for stuck state
+				if (state === 'stuck') {
+					showThoughtBubble('🤔');
+				} else if (state === 'test_failed') {
+					showThoughtBubble('😵');
+				} else {
+					hideThoughtBubble();
 				}
 			}
 
-			// Volume control
-			document.getElementById('volume').addEventListener('input', (e) => {
-				if (synth) {
-					synth.volume.value = parseInt(e.target.value);
-					updateMusicStatus('Volume: ' + e.target.value + ' dB');
+			// Toggle compact mode
+			function toggleCompact() {
+				isCompact = !isCompact;
+				const container = document.getElementById('mainContainer');
+				if (isCompact) {
+					container.classList.add('compact');
+				} else {
+					container.classList.remove('compact');
 				}
-			});
-
-			const vibeEmojis = {
-				encouraging: '😊',
-				roasting: '😏',
-				neutral: '🤖'
-			};
-
-			// Messages
-			const messages = {
-				encouraging: {
-					idle: "Ready when you are! 💪",
-					productive: "You're crushing it! 🔥",
-					stuck: "Take a breath, you got this! 🌟",
-					testing: "Fingers crossed! 🤞",
-					test_passed: "YES! I knew you could do it! 🎉",
-					test_failed: "It's okay, we'll fix it together! 💙"
-				},
-				roasting: {
-					idle: "gonna code or just stare? 👀",
-					productive: "wow actually working for once",
-					stuck: "stackoverflow isn't gonna solve this one chief",
-					testing: "let's see how badly this fails",
-					test_passed: "finally lmao 💀",
-					test_failed: "skill issue fr fr"
-				},
-				neutral: {
-					idle: "System ready.",
-					productive: "Optimal productivity detected.",
-					stuck: "Analyzing bottleneck...",
-					testing: "Running tests...",
-					test_passed: "Tests passing. Continuing.",
-					test_failed: "Test failure. Debugging recommended."
-				}
-			};
-
-			// Update display
-			function updateDisplay() {
-				document.getElementById('message').textContent = messages[currentVibe][currentState];
-				document.getElementById('state').textContent = 'State: ' + currentState;
 			}
 
-			// Vibe buttons
-			document.querySelectorAll('.vibe-btn').forEach(btn => {
-				btn.addEventListener('click', async () => {
-					// Initialize music on first interaction
-					if (!musicInitialized) {
-						await initMusic();
-						playMusicForState(currentState);
-					}
+			// Toggle music mode
+			function toggleMusicMode() {
+				musicMode = musicMode === 'automatic' ? 'playlist' : 'automatic';
+				const btn = document.getElementById('musicModeBtn');
+				btn.textContent = musicMode === 'automatic' ? '🎵 Auto' : '🎶 Playlist';
+				vscode.postMessage({ command: 'toggleMusicMode' });
+			}
 
-					document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
-					btn.classList.add('active');
-					
-					currentVibe = btn.dataset.vibe;
-					updateDisplay();
-					
-					vscode.postMessage({ command: 'vibeChanged', vibe: currentVibe });
+			// Show thought bubble
+			function showThoughtBubble(emoji) {
+				const bubble = document.getElementById('thoughtBubble');
+				bubble.textContent = emoji;
+				bubble.classList.add('show');
+				if (thoughtBubbleTimeout) clearTimeout(thoughtBubbleTimeout);
+				thoughtBubbleTimeout = setTimeout(() => {
+					hideThoughtBubble();
+				}, 3000);
+			}
+
+			// Hide thought bubble
+			function hideThoughtBubble() {
+				document.getElementById('thoughtBubble').classList.remove('show');
+			}
+
+			// Music generation
+			let currentMusic = null;
+			let strudelPattern = null;
+
+			function playMusic(state, vibe) {
+				stopMusic();
+
+				// Simple Tone.js music generation based on state
+				const synth = new Tone.Synth().toDestination();
+				const notes = {
+					idle: ['C4', 'E4', 'G4'],
+					productive: ['D4', 'F#4', 'A4'],
+					stuck: ['A3', 'C4', 'E4'],
+					procrastinating: ['B3', 'D4', 'F#4'],
+					testing: ['E4', 'G4', 'B4'],
+					building: ['F4', 'A4', 'C5'],
+					test_passed: ['G4', 'B4', 'D5'],
+					test_failed: ['A3', 'C4', 'D#4']
+				};
+
+				const sequence = new Tone.Sequence((time, note) => {
+					synth.triggerAttackRelease(note, '8n', time);
+				}, notes[state] || notes.idle, '4n');
+
+				sequence.loop = true;
+				sequence.start();
+				currentMusic = sequence;
+
+				Tone.Transport.start();
+			}
+
+			function stopMusic() {
+				if (currentMusic) {
+					currentMusic.stop();
+					currentMusic.dispose();
+					currentMusic = null;
+				}
+				if (strudelPattern) {
+					strudelPattern.stop();
+					strudelPattern = null;
+				}
+			}
+
+			function changeBeats() {
+				// Implement beat changes
+				vscode.postMessage({ command: 'showQuote', quote: 'Beats changed!' });
+			}
+
+			function changeRhythm() {
+				// Implement rhythm changes
+				vscode.postMessage({ command: 'showQuote', quote: 'Rhythm changed!' });
+			}
+
+			function changeSpeed() {
+				// Implement speed changes
+				if (Tone.Transport.bpm) {
+					Tone.Transport.bpm.value = (Tone.Transport.bpm.value + 20) % 200 || 120;
+				}
+				vscode.postMessage({ command: 'showQuote', quote: 'Speed changed!' });
+			}
+
+			function updatePersonalityMessage(vibe) {
+				const messages = {
+					encouraging: 'Ready to vibe! Start coding...',
+					roasting: 'What are you waiting for? Code already!',
+					neutral: 'Systems online. Awaiting input.'
+				};
+				document.getElementById('message').textContent = messages[vibe] || messages.encouraging;
+			}
+
+			// Initialize
+			document.addEventListener('DOMContentLoaded', async () => {
+				// Start Tone.js
+				await Tone.start();
+
+				updateAvatarState('idle');
+				updatePersonalityMessage('encouraging');
+				generateCodeParticles();
+
+				// Avatar click to toggle compact mode
+				document.getElementById('avatarWrapper').addEventListener('click', (e) => {
+					if (!e.target.closest('.thought-bubble')) {
+						toggleCompact();
+					}
+				});
+
+				// Vibe selector
+				document.querySelectorAll('.vibe-btn').forEach(btn => {
+					btn.addEventListener('click', () => {
+						document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
+						btn.classList.add('active');
+						currentVibe = btn.dataset.vibe;
+						updatePersonalityMessage(currentVibe);
+						vscode.postMessage({ command: 'vibeChanged', vibe: currentVibe });
+					});
+				});
+
+				// Control buttons
+				document.getElementById('startMusicBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					vscode.postMessage({ command: 'startMusic' });
+				});
+
+				document.getElementById('musicModeBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					toggleMusicMode();
+				});
+
+				document.getElementById('pauseBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					isPaused = !isPaused;
+					document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+					vscode.postMessage({ command: 'pauseAnimations' });
+				});
+
+				document.getElementById('themeBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					vscode.postMessage({ command: 'customizeAvatar' });
+				});
+
+				// Strudel controls
+				document.getElementById('changeBeatsBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					vscode.postMessage({ command: 'changeBeats' });
+				});
+
+				document.getElementById('changeRhythmBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					vscode.postMessage({ command: 'changeRhythm' });
+				});
+
+				document.getElementById('changeSpeedBtn').addEventListener('click', (e) => {
+					e.stopPropagation();
+					vscode.postMessage({ command: 'changeSpeed' });
 				});
 			});
 
-			// Stop music function
-			function stopMusic() {
-				if (currentLoop) {
-					currentLoop.stop();
-					currentLoop.dispose();
-					currentLoop = null;
-				}
-				Tone.Transport.stop();
-				isPlaying = false;
-				updateMusicStatus('Music stopped');
-				document.getElementById('playBtn').style.display = 'inline-block';
-				document.getElementById('stopBtn').style.display = 'none';
-			}
-
-			// Play/Stop buttons
-			document.getElementById('playBtn').addEventListener('click', async () => {
-				if (!musicInitialized) await initMusic();
-				if (!isPlaying) {
-					playMusicForState(currentState);
-					isPlaying = true;
-					document.getElementById('playBtn').style.display = 'none';
-					document.getElementById('stopBtn').style.display = 'inline-block';
-				}
-			});
-
-			document.getElementById('stopBtn').addEventListener('click', () => {
-				stopMusic();
-			});
-
-			// Advanced controls
-			document.getElementById('speed').addEventListener('input', (e) => {
-				speedMultiplier = parseFloat(e.target.value);
-				document.getElementById('speedValue').textContent = speedMultiplier.toFixed(1) + 'x';
-				if (isPlaying) {
-					playMusicForState(currentState); // Restart with new speed
-				}
-			});
-
-			document.getElementById('rhythm').addEventListener('change', (e) => {
-				rhythmType = e.target.value;
-				if (isPlaying) {
-					playMusicForState(currentState); // Restart with new rhythm
-				}
-			});
-
-			document.getElementById('beats').addEventListener('change', (e) => {
-				beatsPerMeasure = parseInt(e.target.value);
-				if (isPlaying) {
-					playMusicForState(currentState); // Restart with new beats
-				}
-			});
-
-			// Request metrics every 2 seconds
-			setInterval(() => {
-				vscode.postMessage({ command: 'getMetrics' });
-			}, 2000);
-
-			// Listen for messages from extension
+			// Handle messages from extension
 			window.addEventListener('message', event => {
 				const message = event.data;
 
 				switch (message.command) {
+					case 'init':
+						musicMode = message.musicMode;
+						document.getElementById('musicModeBtn').textContent = musicMode === 'automatic' ? '🎵 Auto' : '🎶 Playlist';
+						break;
 					case 'stateChanged':
-						currentState = message.state;
-						updateDisplay();
-						if (isPlaying) {
-							playMusicForState(currentState);
+						updateAvatarState(message.state);
+						break;
+					case 'updateAvatarState':
+						updateAvatarState(message.state);
+						break;
+					case 'playMusic':
+						playMusic(message.state, message.vibe);
+						break;
+					case 'stopMusic':
+						stopMusic();
+						break;
+					case 'toggleAvatar':
+						const wrapper = document.getElementById('avatarWrapper');
+						if (message.visible) {
+							wrapper.classList.remove('hidden');
+						} else {
+							wrapper.classList.add('hidden');
 						}
 						break;
-					case 'metrics':
-						if (message.data) {
-							const idleSeconds = Math.floor(message.data.idleTime / 1000);
-							const idleMinutes = Math.floor(idleSeconds / 60);
-							const idleDisplay = idleMinutes > 0 ?
-								idleMinutes + 'm ' + (idleSeconds % 60) + 's' :
-								idleSeconds + 's';
-							document.getElementById('idleTime').textContent = 'Idle: ' + idleDisplay;
+					case 'minimizeAvatar':
+						const avatarWrapper = document.getElementById('avatarWrapper');
+						if (message.minimized) {
+							avatarWrapper.classList.add('minimized');
+						} else {
+							avatarWrapper.classList.remove('minimized');
 						}
+						break;
+					case 'pauseAnimations':
+						document.body.classList.toggle('paused');
+						break;
+					case 'changeTheme':
+						document.body.classList.remove('theme-' + currentTheme);
+						currentTheme = message.theme;
+						document.body.classList.add('theme-' + currentTheme);
+						break;
+					case 'resetPosition':
+						const avatarW = document.getElementById('avatarWrapper');
+						avatarW.classList.remove('minimized');
+						break;
+					case 'showQuote':
+						document.getElementById('message').textContent = message.quote;
+						break;
+					case 'hint':
+						document.getElementById('message').textContent = message.text;
+						break;
+					case 'metrics':
+						document.getElementById('message').textContent = 'Metrics: ' + JSON.stringify(message.data);
+						break;
+					case 'changeBeats':
+						changeBeats();
+						break;
+					case 'changeRhythm':
+						changeRhythm();
+						break;
+					case 'changeSpeed':
+						changeSpeed();
+						break;
+					case 'toggleUI':
+						toggleCompact();
 						break;
 				}
 			});
-
-			updateDisplay();
 		</script>
 	</body>
-	</html>`;
-}
-
-export function deactivate() {
-	activityDetector?.dispose();
-	musicEngine?.dispose();
-	testRunner?.dispose();
-	if (animationInterval) {
-		clearInterval(animationInterval);
-	}
+</html>`;
 }

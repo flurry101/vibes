@@ -96,7 +96,7 @@ export class ActivityDetector {
       return 'idle';
     } // More than 60 seconds of inactivity
 
-    if (idleTime > 30000) {
+    if (idleTime > 120000) {
       return 'procrastinating'; // Idle but not completely inactive
     }
 
@@ -139,6 +139,10 @@ export class ActivityDetector {
   // Test runner detection - need to watch for test events in the terminal/output
   onTestRun(passed: boolean) {
     this.updateState(passed ? 'test_passed' : 'test_failed');
+  }
+
+  public getCurrentState(): ActivityState {
+    return this.currentState;
   }
 
   public dispose() {

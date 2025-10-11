@@ -18,6 +18,28 @@
       {
         "command": "vibe-driven-development.showCompanion",
         "title": "VDD: Show Vibe Companion"
+      },
+      {
+        "command": "vibe-driven-development.toggleUI",
+        "title": "VDD: Toggle UI Mode"
+      },
+      {
+        "command": "vibe-driven-development.toggleMusicMode",
+        "title": "VDD: Toggle Music Mode"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "vibe-driven-development.toggleUI",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vibe-driven-development.toggleMusicMode",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "editorTextFocus"
       }
     ]
   },
