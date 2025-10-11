@@ -32,10 +32,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
 
+		// Initialize Music Engine
 		musicEngine = new MusicEngine((data: MusicData) => {
 			currentPanel?.webview.postMessage(data);
 		});
 
+		// Initialize Activity Detector
 		activityDetector = new ActivityDetector((newState) => {
 			console.log('📡 Activity state changed:', newState);
 
@@ -47,6 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
 			musicEngine?.playStateMusic(newState);
 		});
 
+		// Handle messages from Webview
 		currentPanel.webview.onDidReceiveMessage(
 			message => {
 				switch (message.command) {
@@ -60,8 +63,12 @@ export function activate(context: vscode.ExtensionContext) {
 							text: 'Try breaking this into smaller functions!'
 						});
 						break;
-					case 'musicStatus':
-						console.log('Music status:', message.status);
+					case 'getMetrics':
+						const metrics = activityDetector?.getMetrics();
+						currentPanel?.webview.postMessage({
+							command: 'metrics',
+							data: metrics
+						});
 						break;
 				}
 			},
@@ -77,6 +84,8 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(showCompanion);
+
+	// Auto-show on startup
 	vscode.commands.executeCommand('vibe-driven-development.showCompanion');
 }
 
@@ -97,7 +106,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				padding: 20px;
 			}
 			.container { 
-				max-width: 400px; 
+				max-width: 500px; 
 				margin: 0 auto; 
 				text-align: center; 
 			}
@@ -153,24 +162,85 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				color: var(--vscode-descriptionForeground);
 				margin-top: 10px;
 			}
-			.music-status {
-				margin-top: 10px;
-				padding: 10px;
-				background: var(--vscode-input-background);
+			.controls {
+				margin: 30px 0;
+				display: flex;
+				flex-direction: column;
+				gap: 15px;
+				align-items: center;
+			}
+			.control-row {
+				display: flex;
+				gap: 10px;
+				align-items: center;
+				width: 100%;
+				max-width: 300px;
+			}
+			.control-btn {
+				padding: 10px 20px;
+				border: 1px solid var(--vscode-button-border);
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+				cursor: pointer;
 				border-radius: 4px;
-				font-size: 11px;
-				color: var(--vscode-descriptionForeground);
+				font-size: 14px;
+			}
+			.control-btn:hover {
+				background: var(--vscode-button-hoverBackground);
+			}
+			.control-btn.stop {
+				background: var(--vscode-errorForeground);
+				color: white;
 			}
 			.volume-control {
-				margin-top: 15px;
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				width: 100%;
 			}
-			.volume-control label {
-				display: block;
-				margin-bottom: 5px;
+			.volume-slider {
+				flex: 1;
+				height: 4px;
+				-webkit-appearance: none;
+				appearance: none;
+				background: var(--vscode-button-border);
+				outline: none;
+				border-radius: 2px;
+			}
+			.volume-slider::-webkit-slider-thumb {
+				-webkit-appearance: none;
+				appearance: none;
+				width: 16px;
+				height: 16px;
+				background: var(--vscode-button-background);
+				border: 2px solid var(--vscode-focusBorder);
+				cursor: pointer;
+				border-radius: 50%;
+			}
+			.volume-slider::-moz-range-thumb {
+				width: 16px;
+				height: 16px;
+				background: var(--vscode-button-background);
+				border: 2px solid var(--vscode-focusBorder);
+				cursor: pointer;
+				border-radius: 50%;
+			}
+			.volume-label {
 				font-size: 12px;
+				min-width: 50px;
 			}
-			.volume-control input {
-				width: 200px;
+			.metrics {
+				margin-top: 20px;
+				padding: 15px;
+				background: var(--vscode-editor-inactiveSelectionBackground);
+				border-radius: 8px;
+				font-size: 12px;
+				text-align: left;
+			}
+			.metrics-row {
+				display: flex;
+				justify-content: space-between;
+				margin: 5px 0;
 			}
 		</style>
 	</head>
@@ -190,15 +260,32 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				Ready to vibe! Start coding...
 			</div>
 
-			<div class="state" id="state">State: idle</div>
-			
-			<div class="music-status" id="musicStatus">
-				🎵 Click a vibe button to start music
+			<div class="state" id="state">
+				State: idle
 			</div>
 
-			<div class="volume-control">
-				<label for="volume">Volume</label>
-				<input type="range" id="volume" min="-30" max="0" value="-12" step="1">
+			<div class="controls">
+				<div class="control-row">
+					<button class="control-btn stop" id="stopBtn">⏹️ Stop Music</button>
+					<button class="control-btn" id="playBtn">▶️ Play</button>
+				</div>
+				
+				<div class="volume-control">
+					<span class="volume-label">🔊 Volume:</span>
+					<input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="50">
+					<span class="volume-label" id="volumeValue">50%</span>
+				</div>
+			</div>
+
+			<div class="metrics" id="metrics">
+				<div class="metrics-row">
+					<span>Typing Count:</span>
+					<span id="typingCount">0</span>
+				</div>
+				<div class="metrics-row">
+					<span>Idle Time:</span>
+					<span id="idleTime">0s</span>
+				</div>
 			</div>
 		</div>
 
@@ -210,20 +297,17 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			let musicInitialized = false;
 			let currentLoop = null;
 			let synth = null;
+			let isPlaying = false;
 
-			function updateMusicStatus(status) {
-				document.getElementById('musicStatus').textContent = '🎵 ' + status;
-				vscode.postMessage({ command: 'musicStatus', status });
-			}
-
+			// 🎵 MUSIC SETUP
 			async function initMusic() {
 				if (musicInitialized) return;
 				
 				try {
-					updateMusicStatus('Initializing...');
 					await Tone.start();
 					console.log('🎵 Audio context started');
 					
+					// Create synth
 					synth = new Tone.PolySynth(Tone.Synth, {
 						oscillator: { type: 'sine' },
 						envelope: {
@@ -236,16 +320,12 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					
 					synth.volume.value = -12;
 					musicInitialized = true;
-					updateMusicStatus('Music ready!');
-					
-					// Start playing immediately
-					playMusicForState(currentState);
 				} catch (error) {
 					console.error('Failed to initialize music:', error);
-					updateMusicStatus('Error: ' + error.message);
 				}
 			}
 
+			// 🎵 MUSIC PATTERNS
 			const musicPatterns = {
 				idle: {
 					notes: ['C4', 'E4', 'G4'],
@@ -266,61 +346,78 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					notes: ['C4', 'E4', 'G4', 'C5'],
 					interval: '4n',
 					tempo: 100
+				},
+				procrastinating: {
+					notes: ['C4', 'C4'],
+					interval: '1n',
+					tempo: 40
+				},
+				building: {
+					notes: ['C4', 'E4', 'G4', 'B4', 'D5'],
+					interval: '16n',
+					tempo: 140
+				},
+				test_passed: {
+					notes: ['C5', 'E5', 'G5', 'C6'],
+					interval: '16n',
+					tempo: 160
+				},
+				test_failed: {
+					notes: ['C4', 'B3', 'A3', 'G3'],
+					interval: '8n',
+					tempo: 60
 				}
 			};
 
+			// 🎵 PLAY MUSIC FOR STATE
 			function playMusicForState(state) {
 				if (!musicInitialized) {
 					return;
 				}
 
-				try {
-					// Stop current loop
-					if (currentLoop) {
-						currentLoop.stop();
-						currentLoop.dispose();
-						currentLoop = null;
-					}
+				// Stop current loop
+				stopMusic();
 
-					const pattern = musicPatterns[state] || musicPatterns.idle;
-					Tone.Transport.bpm.value = pattern.tempo;
+				const pattern = musicPatterns[state] || musicPatterns.idle;
+				Tone.Transport.bpm.value = pattern.tempo;
 
-					let index = 0;
-					currentLoop = new Tone.Loop(time => {
-						if (synth) {
-							synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
-						}
-						index = (index + 1) % pattern.notes.length;
-					}, pattern.interval).start(0);
+				let index = 0;
+				currentLoop = new Tone.Loop(time => {
+					synth.triggerAttackRelease(pattern.notes[index], pattern.interval, time);
+					index = (index + 1) % pattern.notes.length;
+				}, pattern.interval).start(0);
 
-					Tone.Transport.start();
-					updateMusicStatus('Playing: ' + state + ' (' + pattern.tempo + ' BPM)');
-				} catch (error) {
-					console.error('Error playing music:', error);
-					updateMusicStatus('Playback error: ' + error.message);
-				}
+				Tone.Transport.start();
+				isPlaying = true;
 			}
 
-			// Volume control
-			document.getElementById('volume').addEventListener('input', (e) => {
-				if (synth) {
-					synth.volume.value = parseInt(e.target.value);
-					updateMusicStatus('Volume: ' + e.target.value + ' dB');
+			// Stop music
+			function stopMusic() {
+				if (currentLoop) {
+					currentLoop.stop();
+					currentLoop.dispose();
+					currentLoop = null;
 				}
-			});
+				Tone.Transport.stop();
+				isPlaying = false;
+			}
 
+			// Vibe emojis
 			const vibeEmojis = {
 				encouraging: '😊',
 				roasting: '😏',
 				neutral: '🤖'
 			};
 
+			// Messages
 			const messages = {
 				encouraging: {
 					idle: "Ready when you are! 💪",
 					productive: "You're crushing it! 🔥",
 					stuck: "Take a breath, you got this! 🌟",
 					testing: "Fingers crossed! 🤞",
+					procrastinating: "I believe in you! Let's do this! 🚀",
+					building: "Building something amazing! ⚡",
 					test_passed: "YES! I knew you could do it! 🎉",
 					test_failed: "It's okay, we'll fix it together! 💙"
 				},
@@ -329,6 +426,8 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					productive: "wow actually working for once",
 					stuck: "stackoverflow isn't gonna solve this one chief",
 					testing: "let's see how badly this fails",
+					procrastinating: "twitter won't code itself... wait",
+					building: "hope you saved your work 🔥",
 					test_passed: "finally lmao 💀",
 					test_failed: "skill issue fr fr"
 				},
@@ -337,21 +436,27 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					productive: "Optimal productivity detected.",
 					stuck: "Analyzing bottleneck...",
 					testing: "Running tests...",
+					procrastinating: "Activity level: low.",
+					building: "Build in progress.",
 					test_passed: "Tests passing. Continuing.",
 					test_failed: "Test failure. Debugging recommended."
 				}
 			};
 
+			// Update display
 			function updateDisplay() {
 				document.getElementById('companion').textContent = vibeEmojis[currentVibe];
 				document.getElementById('message').textContent = messages[currentVibe][currentState];
 				document.getElementById('state').textContent = 'State: ' + currentState;
 			}
 
+			// Vibe buttons
 			document.querySelectorAll('.vibe-btn').forEach(btn => {
 				btn.addEventListener('click', async () => {
+					// Initialize music on first interaction
 					if (!musicInitialized) {
 						await initMusic();
+						playMusicForState(currentState);
 					}
 
 					document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
@@ -367,6 +472,39 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				});
 			});
 
+			// Stop button
+			document.getElementById('stopBtn').addEventListener('click', () => {
+				stopMusic();
+			});
+
+			// Play button
+			document.getElementById('playBtn').addEventListener('click', async () => {
+				if (!musicInitialized) {
+					await initMusic();
+				}
+				if (!isPlaying) {
+					playMusicForState(currentState);
+				}
+			});
+
+			// Volume slider
+			document.getElementById('volumeSlider').addEventListener('input', (e) => {
+				const volume = parseInt(e.target.value);
+				document.getElementById('volumeValue').textContent = volume + '%';
+				
+				if (synth) {
+					// Convert 0-100 to decibels (-40 to 0)
+					const db = (volume / 100) * 40 - 40;
+					synth.volume.value = db;
+				}
+			});
+
+			// Request metrics every 2 seconds
+			setInterval(() => {
+				vscode.postMessage({ command: 'getMetrics' });
+			}, 2000);
+
+			// Listen for messages from extension
 			window.addEventListener('message', event => {
 				const message = event.data;
 				
@@ -374,10 +512,19 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					case 'stateChanged':
 						currentState = message.state;
 						updateDisplay();
-						playMusicForState(currentState);
+						if (musicInitialized && isPlaying) {
+							playMusicForState(currentState);
+						}
 						break;
 					case 'hint':
 						console.log('Hint:', message.text);
+						break;
+					case 'metrics':
+						if (message.data) {
+							document.getElementById('typingCount').textContent = message.data.typingCount;
+							const idleSeconds = Math.floor(message.data.idleTime / 1000);
+							document.getElementById('idleTime').textContent = idleSeconds + 's';
+						}
 						break;
 				}
 			});

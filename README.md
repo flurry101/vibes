@@ -1,61 +1,131 @@
-# VDD README
+# VibeFlow 
 
-This is the README for your extension "vibe-driven-development". After writing up a brief description, we recommend including the following sections.
+VibeFlow is a VS Code extension that adapts to your coding flow, dynamically adjusting to your coding style and energy. Whether you're debugging, coding, or testing, VibeFlow keeps you focused and in the zone.
+
+![Demo]()
 
 
-## Features
 
-- 🎵 Music auto-adapts to your coding rhythm
-- 😊 Three personalities - encouraging, roasting, neutral
-- 🎨 ASCII art animations - changes with mood
-- 📊 Smart activity detection - knows when you're stuck
-- 🧪 Test celebrations - cheers when tests pass
-- 🎹 Strudel live coding - algorithmic music generation
-- 💤 Non-intrusive - just a small status bar icon
-- 🔥 Wholesome - makes coding feel less lonely
+## Key Features
 
+-  **Music Auto-Adapts**: The soundtrack dynamically changes to match your coding rhythm: whether you're in the zone, stuck on a bug, or just chilling.
+-  **Alternate Personalities**: Choose your companion's vibe: encouraging, roasting, or neutral. Get the motivation you need, exactly how you need it or don't (?)
+-  **ASCII Art Animations**: The companion's mood is visualized with fun, animated ASCII art that changes based on your activity.
+-  **Smart Activity Detection**: VibeFlow knows when you're productive, stuck, or even procrastinating, and adjusts the atmosphere accordingly.
+-  **Test Celebrations**: Get a little celebration with special sounds and animations every time your tests pass!
+-  **Strudel Live Coding**: Integrates with Strudel for algorithmic music generation, turning your code into a symphony.
+-  **Non-Intrusive UI**: No clutter. VibeFlow lives as a small, friendly icon in your status bar, there when you need it and out of the way when you don't.
+-  **Wholesome Support**: Designed to make your coding sessions feel less isolated and more enjoyable.
+
+<!-- ## Features
 Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
 For example if there is an image subfolder under your extension project workspace:
 
-\!\[feature X\]\(images/feature-x.png\)
+![feature X]()
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow. -->
 
-## Requirements
+<!--    
+## 💡 Why You Might Care
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+<details>
 
-## Extension Settings
+Let's be real for a second, coding can be a lonely grind. Staring at a screen for hours, wrestling with complex logic, and the endless cycle of coding, testing, and debugging can drain your energy and motivation. Many developers feel isolated or hit creative walls, turning a passion into a chore. The silence can be deafening, but generic music playlists often become distracting. That’s why we made VibeFlow.
 
+Vibe Driven Development (VDD) is all about creating a coding environment that aligns with your rhythm, boosts your energy, and keeps you in the zone— whether you're tackling tough problems or just vibing. The principle behind VDD is simple: coding is better when it’s dynamic, engaging, and personalized. I mean sure, it could be very ineffective but entertaining, but you know you've got to give this a try.
+
+We believe that your development experience shouldn’t be a lonely grind but a creative journey. By combining AI, music, and a dash of humor, VDD turns your editor into a companion that adapts to your needs—motivating, celebrating, or just keeping you company when things get tough. It’s about feeling more connected, more productive, and having fun while you code. The ultimate goal? A more joyful, less isolating coding experience that lets you flow effortlessly from task to task.
+</details>
+
+### 📢 Is this even a real problem?
+
+<details>
+Absolutely. Developer burnout is real, and the environment you code in plays a huge role. A lack of engagement and the repetitive nature of tasks can lead to a drop in both productivity and happiness. VibeFlow was created to tackle this head-on. By creating a dynamic, responsive, and personalized atmosphere, it turns your editor into a space that feels alive. It’s not just about background music; it's about having a companion that understands your workflow and is there to cheer you on, roast your silly mistakes, or just provide a calming presence. It helps you stay in the zone, pushes you through the tough spots, and makes the whole process feel more like a creative partnership.
+</details>
+-->
+
+## Quick Start
+
+### 1. Installation
+
+You can install VibeFlow directly from the VS Code Marketplace.
+
+- Open the Extensions view in VS Code (Ctrl+Shift+X).
+- Search for Vibe Driven Development.
+- Click Install.
+
+### 2. Configure Your AI API Key (Optional, but Recommended)
+
+For the full AI music generation experience, you’ll need a free Google Gemini API key.
+
+- Get your key from Google AI Studio.
+- In VS Code, open Settings (Ctrl+,).
+- Search for `vibe-driven-development.geminiAPIkey`.
+- Paste your API key into the input field.
+
+If you don't provide a key, VibeFlow will use a cool set of fallback presets!
+
+### 3. Basic Usage
+
+Once installed, VibeFlow gets to work automatically.
+
+- **See the Vibe**: Look for the heart icon ($(heart)) in your status bar. This shows the current vibe. Click it to change modes!
+- **Open the Companion**: Run the command `VDD: Show Vibe Companion` from the Command Palette (Ctrl+Shift+P) to open the companion window with ASCII art and activity metrics.
+- **Start Coding**: The music and vibe will adapt as you work. Enjoy the flow!
+
+<!-- ## Requirements
+If you have any requirements or dependencies, add a section describing those and how to install and configure them. -->
+
+## Usage Guide
+
+### Commands
+
+Access these from the Command Palette (Ctrl+Shift+P):
+
+- `VDD: Show Vibe Companion`: Opens the side panel to show the ASCII art companion, metrics, and music controls.
+- `VDD: Change Vibe Mode`: Quickly cycle between encouraging, roasting, and neutral personalities.
+- `VDD: Toggle Music`: Turns the adaptive music on or off.
+
+### Extension Settings
+
+Customize VibeFlow by going to File > Preferences > Settings and searching for "Vibe Driven Development".
+
+- `vibe-driven-development.geminiAPIkey`: Your Google Gemini API key for AI music generation.
+- `vibe-driven-development.defaultVibe`: Set the default companion vibe mode on startup (encouraging, roasting, or neutral).
+- `vibe-driven-development.enableMusic`: Enable or disable the background music entirely.
+- `vibe-driven-development.musicMode`: Choose your music generation mode (curated, ai, strudel, or hybrid).
+
+<!-- ## Extension Settings
 Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
 This extension contributes the following settings:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- `myExtension.enable`: Enable/disable this extension.
+- `myExtension.thing`: Set to `blah` to do something. -->
 
-## Known Issues
+## Contributing
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+Interested in making VibeFlow even better? We'd love your help! Whether you're fixing a bug, adding a feature, or improving documentation, your contributions are welcome.
 
-## Release Notes
+Please read our Contributing Guide to get started.
 
+<!-- ## Known Issues
+Calling out known issues can help limit users opening duplicate issues against your extension. -->
+
+## License
+
+VibeFlow is licensed under the MIT License.
+
+<!-- ## Release Notes
 Users appreciate release notes as you update your extension.
 
 ### 1.0.0
-
 Initial release of ...
 
 ### 1.0.1
-
 Fixed issue #.
 
 ### 1.1.0
-
-Added features X, Y, and Z.
+Added features X, Y, and Z. -->
 
 ---
 
@@ -63,19 +133,20 @@ Added features X, Y, and Z.
 
 Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+- [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
 
-## Working with Markdown
+<!-- ## Working with Markdown
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+You can author this README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+- Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
+- Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
+- Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+-->
 
 ## For more information
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+- [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
+- [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
-**Enjoy!**
+**Enjoy!** 🎧

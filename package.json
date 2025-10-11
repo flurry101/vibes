@@ -1,6 +1,6 @@
 {
   "name": "vibe-driven-development",
-  "displayName": "Vibe Driven Development",
+  "displayName": "vibe-driven-development",
   "description": "A VS Code AI coding companion that supports actual Vibe-Driven Development (VDD)",
   "version": "0.0.1",
   "engines": {
