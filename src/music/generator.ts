@@ -1,34 +1,224 @@
 // src/music/generator.ts
-import { MusicData } from '../types';
 
-export type MusicState = 'idle' | 'productive' | 'stuck' | 'testing' | 'celebrating';
+import * as Tone from 'tone';
+import { MusicParameters, ActivityState, VibeMode, MusicParamGenerator } from '../ai/musicParamGenerator';
 
 export class MusicGenerator {
-  // This is just a placeholder
-  // Real music generation happens in webview
-  private callback: (data: MusicData) => void;
-  constructor(callback: (data: MusicData) => void) {
-    this.callback = callback;
-    console.log('Music generator initialized');
+  private synth: Tone.PolySynth | null = null;
+  private loop: Tone.Loop | null = null;
+  private initialized = false;
+  private aiGenerator: MusicParamGenerator;
+  private currentParams: MusicParameters | null = null;
+
+  constructor(apiKey: string) {
+    this.aiGenerator = new MusicParamGenerator(apiKey);
   }
 
+  /**
+   * Initialize Tone.js
+   */
   async initialize() {
-    console.log('Music generator initialized');
+    if (this.initialized) {
+      return;
+    }
+
+    await Tone.start();
+    
+    // Create polyphonic synthesizer with reverb
+    this.synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: {
+        type: 'sine'
+      },
+      envelope: {
+        attack: 0.05,
+        decay: 0.3,
+        sustain: 0.4,
+        release: 0.8
+      }
+    }).toDestination();
+
+    // Add reverb for atmosphere
+    const reverb = new Tone.Reverb({
+      decay: 2,
+      wet: 0.3
+    }).toDestination();
+
+    this.synth.connect(reverb);
+    
+    this.initialized = true;
+    console.log('✅ Music generator initialized');
   }
 
-  async playStateMusic(state: MusicState) {
-    console.log('Playing music for state:', state);
-    // Will send message to webview to actually play music
+  /**
+   * Play music based on AI-generated parameters
+   */
+  async playForState(state: ActivityState, vibe: VibeMode) {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Stop current music
+    this.stop();
+
+    try {
+      // Generate parameters via AI
+      console.log(`🎵 Generating music for ${state} + ${vibe}...`);
+      this.currentParams = await this.aiGenerator.generateMusicParams(state, vibe);
+      
+      console.log('🎶 Music params:', this.currentParams);
+
+      // Play the music
+      this.playFromParams(this.currentParams);
+    } catch (error) {
+      console.error('Failed to generate/play music:', error);
+    }
   }
 
-  setVibe(vibe: string) {
-    console.log('Setting vibe:', vibe);
-    // Logic to adjust music based on the vibe, e.g., update the webview music player or settings
-    // You'll implement the music-vibe mapping here
+  /**
+   * Play music from parameters
+   */
+  private playFromParams(params: MusicParameters) {
+    if (!this.synth) {
+      return;
+    }
+
+    // Set volume
+    this.synth.volume.value = params.volume;
+
+    // Create playback pattern
+    const { notes, duration, pattern, tempo } = params;
+    
+    // Set BPM
+    Tone.Transport.bpm.value = tempo;
+
+    // Determine how to play based on pattern
+    switch (pattern) {
+      case 'chord':
+        this.playChord(notes, duration);
+        break;
+      case 'ascending':
+      case 'descending':
+        this.playSequence(notes, duration, pattern === 'descending');
+        break;
+      case 'arpeggio':
+        this.playArpeggio(notes, duration);
+        break;
+    }
+
+    // Start transport
+    Tone.Transport.start();
   }
 
+  /**
+   * Play chord (all notes together)
+   */
+  private playChord(notes: string[], duration: string) {
+    this.loop = new Tone.Loop((time) => {
+      this.synth?.triggerAttackRelease(notes, duration, time);
+    }, duration === '8n' ? '2n' : '1n'); // Repeat interval
+    
+    this.loop.start(0);
+  }
 
+  /**
+   * Play sequence (one note at a time)
+   */
+  private playSequence(notes: string[], duration: string, reverse: boolean) {
+    const sequence = reverse ? [...notes].reverse() : notes;
+    
+    const seq = new Tone.Sequence((time, note) => {
+      this.synth?.triggerAttackRelease(note, duration, time);
+    }, sequence, duration);
+    
+    seq.start(0);
+  }
+
+  /**
+   * Play arpeggio (broken chord pattern)
+   */
+  private playArpeggio(notes: string[], duration: string) {
+    // Create up-down arpeggio pattern
+    const pattern = [...notes, ...notes.slice().reverse().slice(1, -1)];
+    
+    const seq = new Tone.Sequence((time, note) => {
+      this.synth?.triggerAttackRelease(note, duration, time);
+    }, pattern, duration);
+    
+    seq.start(0);
+  }
+
+  /**
+   * Play celebration sound (for test pass)
+   */
+  async playCelebration() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    const celebration: MusicParameters = {
+      tempo: 160,
+      notes: ['C5', 'E5', 'G5', 'C6', 'E6'],
+      duration: '16n',
+      pattern: 'ascending',
+      volume: -5,
+      mood: 'triumphant'
+    };
+
+    this.stop();
+    this.playFromParams(celebration);
+
+    // Auto-stop after 2 seconds
+    setTimeout(() => this.stop(), 2000);
+  }
+
+  /**
+   * Play failure sound (for test fail)
+   */
+  async playFailure() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Sad trombone effect
+    const failure: MusicParameters = {
+      tempo: 60,
+      notes: ['E4', 'D4', 'C4', 'B3'],
+      duration: '4n',
+      pattern: 'descending',
+      volume: -15,
+      mood: 'disappointed'
+    };
+
+    this.stop();
+    this.playFromParams(failure);
+
+    // Auto-stop after 1.5 seconds
+    setTimeout(() => this.stop(), 1500);
+  }
+
+  /**
+   * Stop all music
+   */
   stop() {
-    console.log('Stopping music');
+    if (this.loop) {
+      this.loop.stop();
+      this.loop.dispose();
+      this.loop = null;
+    }
+    
+    Tone.Transport.stop();
+    Tone.Transport.cancel(0);
+  }
+
+  /**
+   * Cleanup
+   */
+  dispose() {
+    this.stop();
+    if (this.synth) {
+      this.synth.dispose();
+      this.synth = null;
+    }
+    this.initialized = false;
   }
 }
