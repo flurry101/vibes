@@ -20,12 +20,17 @@ let avatarVisible: boolean = true;
 let avatarMinimized: boolean = false;
 let musicMode: MusicMode = 'automatic';
 let isPaused: boolean = false;
+let musicStarted: boolean = false;
 let currentStateStartTime: number = Date.now();
+let durationInterval: NodeJS.Timeout | undefined;
+let lastActivityTime: number = Date.now();
+let currentTheme: string = 'cyberpunk';
+let audioContext: any = undefined;
+let analyser: any = undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Vibe-Driven Development extension activated! 🎵');
 
-	// Create status bar item with avatar indicator
 	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusBarItem.text = '👩‍💻';
 	statusBarItem.tooltip = 'Vibe Companion - Click to toggle UI';
@@ -33,7 +38,6 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.show();
 	context.subscriptions.push(statusBarItem);
 
-	// Register commands
 	let showCompanion = vscode.commands.registerCommand('vibe-driven-development.showCompanion', () => {
 		if (currentPanel) {
 			currentPanel.reveal(vscode.ViewColumn.Two);
@@ -54,7 +58,6 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		);
 
-		// Prepare image URIs
 		const imageUris = {
 			idle: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'lofi-girl-sleeping-wallpaper-1920x1200_6.jpg'))),
 			productive: currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'assets', 'images.jpg'))),
@@ -68,30 +71,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.webview.html = getWebviewContent(context, currentPanel.webview, imageUris);
 
-		// Send initial state
-		currentPanel.webview.postMessage({
-			command: 'init',
-			musicMode: musicMode,
-			isPaused: isPaused
-		});
-
-		// Initialize components
 		musicEngine = new MusicEngine((data: MusicData) => {
 			currentPanel?.webview.postMessage(data);
 		});
 
 		strudelGenerator = new StrudelGenerator();
-
-		dialogueManager = new DialogueManager(true, 'rare');
+		dialogueManager = new DialogueManager(true, 'normal');
+		console.log('Dialogue manager initialized');
 
 		activityDetector = new ActivityDetector((newState) => {
 			console.log('📡 Activity state changed:', newState);
-
-			// Update status bar based on state
 			updateStatusBar(newState);
-
-			// Reset state start time when state changes
 			currentStateStartTime = Date.now();
+			lastActivityTime = Date.now();
 
 			currentPanel?.webview.postMessage({
 				command: 'stateChanged',
@@ -103,18 +95,18 @@ export function activate(context: vscode.ExtensionContext) {
 				state: newState
 			});
 
-			// Send state message
 			sendStateMessage(newState);
 
-			if (musicMode === 'automatic') {
-				musicEngine?.playStateMusic(newState);
-			} else {
-				// Playlist mode - send playlist data
-				const playlist = STATE_PLAYLISTS[newState] || [];
-				currentPanel?.webview.postMessage({
-					command: 'playPlaylist',
-					playlist: playlist
-				});
+			if (musicStarted && !isPaused) {
+				if (musicMode === 'automatic') {
+					musicEngine?.playStateMusic(newState);
+				} else {
+					const playlist = STATE_PLAYLISTS[newState] || [];
+					currentPanel?.webview.postMessage({
+						command: 'playPlaylist',
+						playlist: playlist
+					});
+				}
 			}
 			handleDialogue(newState);
 		});
@@ -123,29 +115,124 @@ export function activate(context: vscode.ExtensionContext) {
 			testRunner = new TestRunner(activityDetector);
 		}
 
-		// Update duration display every second
-		setInterval(() => {
-			const duration = Math.floor((Date.now() - currentStateStartTime) / 1000);
-			currentPanel?.webview.postMessage({
-				command: 'updateDuration',
-				duration: duration
-			});
+		if (durationInterval) clearInterval(durationInterval);
+		durationInterval = setInterval(() => {
+			if (!isPaused && musicStarted) {
+				const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+				currentPanel?.webview.postMessage({
+					command: 'updateDuration',
+					duration: elapsed
+				});
+			}
 		}, 1000);
 
-		// Handle messages from Webview
+		setTimeout(() => {
+			currentPanel?.webview.postMessage({
+				command: 'init',
+				musicMode: musicMode,
+				isPaused: isPaused,
+				theme: currentTheme
+			});
+		}, 100);
+
 		currentPanel.webview.onDidReceiveMessage(
 			message => {
+				console.log('Extension received message:', message.command);
+				
 				switch (message.command) {
 					case 'vibeChanged':
 						console.log('Vibe changed to:', message.vibe);
-						musicEngine?.setVibe(message.vibe);
+						if (musicEngine) {
+							musicEngine.setVibe(message.vibe);
+						}
 						break;
+					
+					case 'startMusic':
+						console.log('Starting music...');
+   						musicStarted = true;
+    					sessionStartTime = Date.now();
+    					const currentState = activityDetector?.getCurrentState() || 'idle';
+    
+    					if (musicMode === 'automatic') {
+        					console.log('Auto mode: Using music engine for', currentState);
+        					musicEngine?.playStateMusic(currentState); // This plays synthesized music
+    					} else {
+        					console.log('Playlist mode: Using curated playlists for', currentState);
+        
+        					// Get playlist from curated.ts and open YouTube
+        					const playlist = STATE_PLAYLISTS[currentState] || [];
+        
+        					// This triggers the playPlaylist case to open YouTube
+        					currentPanel?.webview.postMessage({
+            				command: 'playPlaylist', 
+            				playlist: playlist,
+            				state: currentState
+			});
+    		}
+    
+    		currentPanel?.webview.postMessage({
+    		    command: 'musicStarted'
+    		});
+    		break;
+				
+					
+					case 'pauseMusic':
+						console.log('Toggling pause...');
+						isPaused = !isPaused;
+						if (isPaused) {
+							musicEngine?.pause();
+							activityDetector?.pause();
+						} else {
+							musicEngine?.resume();
+							activityDetector?.resume();
+						}
+						currentPanel?.webview.postMessage({
+							command: 'pauseStateChanged',
+							isPaused: isPaused
+						});
+						break;
+					
+					case 'changeTheme':
+						console.log('Theme change:', message.theme);
+						currentTheme = message.theme;
+						currentPanel?.webview.postMessage({
+							command: 'applyTheme',
+							theme: message.theme
+						});
+						break;
+					
+					case 'changeBeats':
+						console.log('Changing beats:', message.value);
+						if (strudelGenerator) {
+							strudelGenerator.changeBeats(message.value);
+						}
+						break;
+					
+					case 'changeRhythm':
+						console.log('Changing rhythm:', message.value);
+						if (strudelGenerator) {
+							strudelGenerator.changeRhythm(message.value);
+						}
+						break;
+					
+					case 'changeSpeed':
+						console.log('Changing speed:', message.value);
+						if (strudelGenerator) {
+							strudelGenerator.changeSpeed(message.value);
+						}
+						break;
+					
+					case 'toggleUI':
+						console.log('Toggling UI');
+						break;
+					
 					case 'requestHint':
 						currentPanel?.webview.postMessage({
 							command: 'hint',
 							text: 'Try breaking this into smaller functions!'
 						});
 						break;
+					
 					case 'getMetrics':
 						const metrics = activityDetector?.getMetrics();
 						currentPanel?.webview.postMessage({
@@ -153,65 +240,67 @@ export function activate(context: vscode.ExtensionContext) {
 							data: metrics
 						});
 						break;
-					case 'toggleDialogue':
-						if (dialogueManager) {
-							dialogueManager.setEnabled(message.enabled);
+					
+					case 'testDialogue':
+						console.log('Testing dialogue...');
+						const testQuote = dialogueManager?.getRandomQuote('triumph');
+						if (testQuote) {
+							currentPanel?.webview.postMessage({
+								command: 'showDialogueToast',
+								quote: testQuote.text + ' - ' + testQuote.source
+							});
 						}
 						break;
+
 					case 'setDialogueFrequency':
+						console.log('Setting dialogue frequency:', message.frequency);
 						if (dialogueManager) {
+							dialogueManager.setEnabled(message.frequency !== 'off');
 							dialogueManager.setFrequency(message.frequency);
 						}
 						break;
+					
 					case 'playPlaylist':
-						// Open first playlist item in browser
-						if (message.playlist && message.playlist.length > 0) {
-							const firstItem = message.playlist[0];
-							vscode.env.openExternal(vscode.Uri.parse(firstItem.url));
-						}
-						break;
-					case 'toggleMusicMode':
-						// This is sent from webview, handle in extension
-						break;
-					case 'changeBeats':
-						if (strudelGenerator) {
-							const pattern = strudelGenerator.changeBeats(message.value);
-							console.log('New beat pattern:', pattern);
-						}
+    					console.log('Playing playlist for state:', message.state);
+    					if (message.playlist && message.playlist.length > 0) {
+        					const selectedPlaylist = message.playlist[0];
+        					console.log('Opening playlist:', selectedPlaylist.title, selectedPlaylist.url);
+        
+       					vscode.env.openExternal(vscode.Uri.parse(selectedPlaylist.url)).then(() => {
+            				console.log('Playlist opened successfully');
+            					currentPanel?.webview.postMessage({
+                				command: 'playlistOpened',
+                				title: selectedPlaylist.title,
+                				url: selectedPlaylist.url
+            				});
+        				}).catch((error) => {
+            				console.error('Error opening playlist:', error);
+            					currentPanel?.webview.postMessage({
+                				command: 'playlistError',
+                				error: 'Failed to open playlist. Please try again.'
+            				});
+        				});
+    					} else {
+        					console.warn('No playlists available for state:', message.state);
+        					currentPanel?.webview.postMessage({
+            				command: 'playlistError',
+            				error: 'No playlists available for this state.'
+       			 		});
+    					}
+    					break;
+
+					case 'toggleVisualization':
+						console.log('Toggling visualization:', message.type);
 						currentPanel?.webview.postMessage({
-							command: 'changeBeats',
-							value: message.value
+							command: 'visualizationToggled',
+							type: message.type
 						});
 						break;
-					case 'changeRhythm':
-						if (strudelGenerator) {
-							const pattern = strudelGenerator.changeRhythm(message.value);
-							console.log('New rhythm pattern:', pattern);
-						}
+
+					case 'toggleNightMode':
+						console.log('Toggling night mode');
 						currentPanel?.webview.postMessage({
-							command: 'changeRhythm',
-							value: message.value
-						});
-						break;
-					case 'changeSpeed':
-						if (strudelGenerator) {
-							const newTempo = strudelGenerator.changeSpeed(message.value);
-							console.log('New tempo:', newTempo);
-						}
-						currentPanel?.webview.postMessage({
-							command: 'changeSpeed',
-							value: message.value
-						});
-						break;
-					case 'startMusic':
-						// Start music manually
-						const currentState = activityDetector?.getCurrentState() || 'idle';
-						musicEngine?.playStateMusic(currentState);
-						break;
-					case 'toggleUI':
-						// Toggle UI compact mode
-						currentPanel?.webview.postMessage({
-							command: 'toggleUI'
+							command: 'nightModeToggled'
 						});
 						break;
 				}
@@ -222,12 +311,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.onDidDispose(() => {
 			currentPanel = undefined;
-			// Keep components running for background functionality
-			// Only dispose when extension deactivates
+			if (durationInterval) clearInterval(durationInterval);
 		});
 	});
 
-	// Keyboard shortcuts
 	let toggleUI = vscode.commands.registerCommand('vibe-driven-development.toggleUI', () => {
 		currentPanel?.webview.postMessage({
 			command: 'toggleUI'
@@ -256,8 +343,17 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	let pauseAnimations = vscode.commands.registerCommand('vibe-driven-development.pauseAnimations', () => {
+		isPaused = !isPaused;
+		if (isPaused) {
+			musicEngine?.pause();
+			activityDetector?.pause();
+		} else {
+			musicEngine?.resume();
+			activityDetector?.resume();
+		}
 		currentPanel?.webview.postMessage({
-			command: 'pauseAnimations'
+			command: 'pauseStateChanged',
+			isPaused: isPaused
 		});
 	});
 
@@ -267,6 +363,7 @@ export function activate(context: vscode.ExtensionContext) {
 			placeHolder: 'Select avatar theme'
 		});
 		if (selected) {
+			currentTheme = selected;
 			currentPanel?.webview.postMessage({
 				command: 'changeTheme',
 				theme: selected
@@ -283,7 +380,6 @@ export function activate(context: vscode.ExtensionContext) {
 	let toggleMusicMode = vscode.commands.registerCommand('vibe-driven-development.toggleMusicMode', () => {
 		musicMode = musicMode === 'automatic' ? 'playlist' : 'automatic';
 		vscode.window.showInformationMessage(`Music mode switched to: ${musicMode}`);
-		// Optionally trigger current state music
 		const currentState = activityDetector?.getCurrentState();
 		if (currentState) {
 			if (musicMode === 'automatic') {
@@ -298,7 +394,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// Register all commands
 	context.subscriptions.push(
 		showCompanion,
 		toggleUI,
@@ -310,11 +405,11 @@ export function activate(context: vscode.ExtensionContext) {
 		toggleMusicMode
 	);
 
-	// Auto-show on startup
 	vscode.commands.executeCommand('vibe-driven-development.showCompanion');
 }
 
 export function deactivate() {
+	if (durationInterval) clearInterval(durationInterval);
 	activityDetector?.dispose();
 	musicEngine?.dispose();
 	strudelGenerator?.dispose();
@@ -323,7 +418,9 @@ export function deactivate() {
 }
 
 function updateStatusBar(state: ActivityState) {
-	if (!statusBarItem) {return;};
+	if (!statusBarItem) {
+		return;
+	}
 	
 	const stateEmojis: Record<ActivityState, string> = {
 		idle: '💤',
@@ -341,7 +438,10 @@ function updateStatusBar(state: ActivityState) {
 }
 
 async function handleDialogue(state: ActivityState) {
-	if (!dialogueManager) {return;};
+	if (!dialogueManager) {
+		console.log('Dialogue manager not initialized');
+		return;
+	}
 
 	const sessionDuration = Date.now() - sessionStartTime;
 	let context: DialogueContext | null = null;
@@ -362,21 +462,31 @@ async function handleDialogue(state: ActivityState) {
 		case 'idle':
 			context = 'motivation';
 			break;
+		case 'procrastinating':
+			context = 'motivation';
+			break;
+		case 'testing':
+			context = 'motivation';
+			break;
+		case 'building':
+			context = 'motivation';
+			break;
 	}
 
 	if (context) {
+		console.log('Attempting dialogue for context:', context);
 		const quote = await dialogueManager.playDialogue(context, sessionDuration);
 		if (quote) {
+			console.log('Showing quote:', quote.text);
 			currentPanel?.webview.postMessage({
-				command: 'showQuote',
-				quote: quote
+				command: 'showDialogueToast',
+				quote: quote.text + ' - ' + quote.source
 			});
 		}
 	}
 }
 
 function sendStateMessage(state: ActivityState) {
-	// Get current vibe from music engine
 	const currentVibe = musicEngine?.['currentVibe'] || 'encouraging';
 
 	const messages: Record<string, Record<string, string>> = {
@@ -433,33 +543,251 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			* { margin: 0; padding: 0; box-sizing: border-box; }
 			
 			:root {
-				--pixel-size: 4px;
-				--avatar-size: 32;
 				--glow-color: #00ffcc;
-				--hoodie-color: #6b46c1;
-				--hoodie-dark: #553c9a;
-				--skin-color: #fdbcb4;
-				--hair-color: #2c1810;
-				--glasses-color: #1a1a1a;
-				--headphones-color: #1f2937;
-				--headphones-accent: #dc2626;
+				--glow-color-accent: #ff00ff;
+				--bg-primary: #0a0e27;
+				--bg-secondary: #1a1a2e;
+				--bg-tertiary: #16213e;
+				--text-primary: #00ffcc;
+				--text-secondary: #ffffff;
+				--particle-color: #00ffcc;
 			}
-			
+
 			body {
-				font-family: var(--vscode-font-family);
-				color: var(--vscode-foreground);
-				background: var(--vscode-editor-background);
+				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+				color: var(--text-secondary);
+				background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
 				padding: 20px;
 				overflow-y: auto;
 				position: relative;
+				transition: background 0.5s ease;
+				min-height: 100vh;
 			}
-			
+
+			body.night-mode {
+				--bg-primary: #0a0a0a;
+				--bg-secondary: #1a1a1a;
+				--bg-tertiary: #2a2a2a;
+				--text-secondary: #e0e0e0;
+				filter: brightness(0.85);
+			}
+
+			body.theme-cozy {
+				--bg-primary: #f5e6d3;
+				--bg-secondary: #ebe0d1;
+				--bg-tertiary: #e0d5c7;
+				--glow-color: #ff9966;
+				--glow-color-accent: #ffcc99;
+				--text-primary: #8b6f47;
+				--text-secondary: #5c4033;
+				--particle-color: #ff9966;
+			}
+
+			body.theme-minimal {
+				--bg-primary: #f5f5f5;
+				--bg-secondary: #e8e8e8;
+				--bg-tertiary: #d0d0d0;
+				--glow-color: #333333;
+				--glow-color-accent: #666666;
+				--text-primary: #333333;
+				--text-secondary: #000000;
+				--particle-color: #666666;
+			}
+
+			body.theme-neon {
+				--bg-primary: #0d0221;
+				--bg-secondary: #1a0033;
+				--bg-tertiary: #2d004d;
+				--glow-color: #ff00ff;
+				--glow-color-accent: #00ffff;
+				--text-primary: #ff00ff;
+				--text-secondary: #ffffff;
+				--particle-color: #00ffff;
+			}
+
+			.background-animation {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				z-index: -1;
+				pointer-events: none;
+				background: linear-gradient(45deg, var(--bg-primary), var(--bg-secondary), var(--bg-tertiary), var(--bg-primary));
+				background-size: 400% 400%;
+				animation: gradientShift 15s ease infinite;
+			}
+
+			@keyframes gradientShift {
+				0% { background-position: 0% 50%; }
+				50% { background-position: 100% 50%; }
+				100% { background-position: 0% 50%; }
+			}
+
+			.visualizer-panel {
+				position: fixed;
+				bottom: 20px;
+				left: 20px;
+				width: 280px;
+				background: var(--bg-secondary);
+				border: 2px solid var(--glow-color);
+				border-radius: 8px;
+				padding: 15px;
+				z-index: 1000;
+				box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+				display: none;
+			}
+
+			.visualizer-panel.active {
+				display: block;
+				animation: slideInLeft 0.3s ease-out;
+			}
+
+			@keyframes slideInLeft {
+				from {
+					transform: translateX(-300px);
+					opacity: 0;
+				}
+				to {
+					transform: translateX(0);
+					opacity: 1;
+				}
+			}
+
+			.visualizer-title {
+				font-size: 12px;
+				color: var(--glow-color);
+				margin-bottom: 10px;
+				text-transform: uppercase;
+				font-weight: bold;
+				letter-spacing: 2px;
+			}
+
+			#waveform {
+				width: 100%;
+				height: 80px;
+				background: var(--bg-tertiary);
+				border-radius: 4px;
+				border: 1px solid var(--glow-color);
+			}
+
+			/* Dropdown Menu Styles */
+			.dropdown-menu {
+				position: fixed;
+				top: 20px;
+				right: 20px;
+				z-index: 999;
+			}
+
+			.dropdown-toggle {
+				width: 40px;
+				height: 40px;
+				background: var(--bg-secondary);
+				border: 2px solid var(--glow-color);
+				border-radius: 50%;
+				color: var(--text-primary);
+				cursor: pointer;
+				font-size: 18px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				transition: all 0.3s ease;
+				box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+			}
+
+			.dropdown-toggle:hover {
+				box-shadow: 0 0 20px var(--glow-color);
+				transform: scale(1.1);
+			}
+
+			.dropdown-content {
+				position: absolute;
+				top: 50px;
+				right: 0;
+				background: var(--bg-secondary);
+				border: 2px solid var(--glow-color);
+				border-radius: 8px;
+				padding: 10px;
+				min-width: 200px;
+				box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+				display: none;
+				flex-direction: column;
+				gap: 8px;
+			}
+
+			.dropdown-content.active {
+				display: flex;
+				animation: slideInDown 0.3s ease-out;
+			}
+
+			@keyframes slideInDown {
+				from {
+					transform: translateY(-10px);
+					opacity: 0;
+				}
+				to {
+					transform: translateY(0);
+					opacity: 1;
+				}
+			}
+
+			.dropdown-item {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 8px 12px;
+				background: var(--bg-tertiary);
+				border: 1px solid var(--glow-color);
+				border-radius: 4px;
+				color: var(--text-secondary);
+				font-size: 12px;
+				cursor: pointer;
+				transition: all 0.3s ease;
+			}
+
+			.dropdown-item:hover {
+				background: var(--glow-color);
+				color: var(--bg-primary);
+				box-shadow: 0 0 10px var(--glow-color);
+			}
+
+			.dropdown-item.active {
+				background: var(--glow-color);
+				color: var(--bg-primary);
+			}
+
+			.dropdown-checkmark {
+				color: var(--text-primary);
+				font-weight: bold;
+				margin-left: 8px;
+			}
+
+			.dropdown-item.active .dropdown-checkmark {
+				color: var(--bg-primary);
+			}
+
+			.dropdown-section {
+				margin: 5px 0;
+				padding: 5px 0;
+				border-bottom: 1px solid var(--glow-color);
+			}
+
+			.dropdown-section-title {
+				font-size: 11px;
+				color: var(--glow-color);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				margin-bottom: 5px;
+				font-weight: bold;
+			}
+
 			.container {
 				max-width: 500px;
 				margin: 0 auto;
 				text-align: center;
 				position: relative;
 				transition: all 0.3s ease;
+				z-index: 10;
 			}
 
 			.container.compact {
@@ -479,10 +807,11 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			
 			h1 { 
 				margin-bottom: 20px; 
-				font-size: 24px; 
+				font-size: 24px;
+				color: var(--text-primary);
+				text-shadow: 0 0 10px var(--glow-color);
 			}
 			
-			/* IMAGE AVATAR CONTAINER */
 			.avatar-wrapper {
 				position: relative;
 				display: inline-block;
@@ -494,13 +823,34 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 			.avatar-wrapper.minimized {
 				transform: scale(0.5);
 				position: fixed;
-				bottom: 20px;
-				right: 20px;
+				bottom: 80px;
+				right: 80px;
 				z-index: 1000;
 			}
 
 			.avatar-wrapper.hidden {
 				display: none;
+			}
+
+			.avatar-reactions {
+				position: absolute;
+				top: -50px;
+				left: 50%;
+				transform: translateX(-50%);
+				font-size: 40px;
+				opacity: 0;
+				animation: floatUp 2s ease-out forwards;
+			}
+
+			@keyframes floatUp {
+				0% {
+					opacity: 1;
+					transform: translateX(-50%) translateY(0);
+				}
+				100% {
+					opacity: 0;
+					transform: translateX(-50%) translateY(-60px);
+				}
 			}
 
 			.image-avatar-container {
@@ -511,33 +861,33 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				transition: filter 0.3s ease;
 				border-radius: 10px;
 				overflow: hidden;
+				border: 2px solid var(--glow-color);
 			}
 
 			.avatar-image {
 				width: 100%;
 				height: 100%;
 				object-fit: cover;
-				border-radius: 10px;
+				border-radius: 8px;
 			}
-			
-			/* Animation states */
+
 			@keyframes idle-breathing {
 				0%, 100% { transform: translateY(0) scale(1); }
 				50% { transform: translateY(-2px) scale(1.01); }
 			}
-			
+
 			@keyframes typing {
 				0%, 100% { transform: translateX(0); }
 				25% { transform: translateX(-1px); }
 				75% { transform: translateX(1px); }
 			}
-			
+
 			@keyframes stuck-thinking {
 				0%, 100% { transform: rotate(0deg); }
 				25% { transform: rotate(-2deg); }
 				75% { transform: rotate(2deg); }
 			}
-			
+
 			@keyframes error-shake {
 				0%, 100% { transform: translateX(0); }
 				10% { transform: translateX(-2px) rotate(-1deg); }
@@ -546,13 +896,13 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				40% { transform: translateX(2px) rotate(1deg); }
 				50% { transform: translateX(0) rotate(0deg); }
 			}
-			
+
 			@keyframes success-bounce {
 				0%, 100% { transform: translateY(0) scale(1); }
 				30% { transform: translateY(-5px) scale(1.05); }
 				60% { transform: translateY(2px) scale(0.98); }
 			}
-			
+
 			@keyframes building-pulse {
 				0%, 100% { 
 					filter: drop-shadow(0 0 10px var(--glow-color));
@@ -561,108 +911,63 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 					filter: drop-shadow(0 0 20px var(--glow-color)) brightness(1.1);
 				}
 			}
-			
-			@keyframes blink {
-				0%, 90%, 100% { opacity: 1; }
-				95% { opacity: 0; }
+
+			@keyframes procrastinating-rock {
+				0%, 100% { transform: rotate(-2deg); }
+				50% { transform: rotate(2deg); }
 			}
-			
-			/* State classes */
+
 			.avatar-state-idle {
 				animation: idle-breathing 4s ease-in-out infinite;
 			}
-			
-			.avatar-state-idle .pixel-avatar-container {
-				filter: drop-shadow(0 0 5px rgba(0, 255, 204, 0.3));
-			}
-			
+
 			.avatar-state-productive {
 				animation: typing 0.3s ease-in-out infinite;
 			}
-			
-			.avatar-state-productive .pixel-avatar-container {
-				filter: drop-shadow(0 0 15px rgba(255, 200, 0, 0.6));
-			}
-			
+
 			.avatar-state-stuck {
 				animation: stuck-thinking 3s ease-in-out infinite;
 			}
-			
-			.avatar-state-stuck .pixel-avatar-container {
-				filter: drop-shadow(0 0 10px rgba(255, 100, 100, 0.4));
+
+			.avatar-state-procrastinating {
+				animation: procrastinating-rock 2s ease-in-out infinite;
 			}
-			
+
 			.avatar-state-test_failed {
 				animation: error-shake 0.5s ease-in-out;
 			}
-			
-			.avatar-state-test_failed .pixel-avatar-container {
-				filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.5));
-			}
-			
+
 			.avatar-state-test_passed {
 				animation: success-bounce 1s ease-in-out;
 			}
-			
-			.avatar-state-test_passed .pixel-avatar-container {
-				filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.6));
-			}
-			
+
 			.avatar-state-building {
 				animation: building-pulse 2s ease-in-out infinite;
 			}
-			
-			.avatar-state-testing .pixel-avatar-container {
-				filter: drop-shadow(0 0 12px rgba(255, 255, 0, 0.5));
-			}
-			
-			/* Blinking eyes animation */
-			.eyes-container {
-				animation: blink 5s infinite;
-			}
-			
-			/* Thought bubble */
+
 			.thought-bubble {
 				position: absolute;
 				top: -40px;
 				right: -20px;
-				background: var(--vscode-editor-background);
-				border: 2px solid var(--vscode-foreground);
+				background: var(--bg-secondary);
+				border: 2px solid var(--glow-color);
 				border-radius: 50%;
-				padding: 5px 10px;
-				font-size: 16px;
+				padding: 8px 12px;
+				font-size: 18px;
 				opacity: 0;
 				transition: opacity 0.3s ease;
 			}
-			
+
 			.thought-bubble.show {
 				opacity: 1;
+				animation: bounce 0.6s ease-out;
 			}
-			
-			.thought-bubble::before,
-			.thought-bubble::after {
-				content: '';
-				position: absolute;
-				background: var(--vscode-editor-background);
-				border: 2px solid var(--vscode-foreground);
-				border-radius: 50%;
+
+			@keyframes bounce {
+				0%, 100% { transform: translateY(0); }
+				50% { transform: translateY(-10px); }
 			}
-			
-			.thought-bubble::before {
-				width: 10px;
-				height: 10px;
-				bottom: -10px;
-				right: 15px;
-			}
-			
-			.thought-bubble::after {
-				width: 6px;
-				height: 6px;
-				bottom: -15px;
-				right: 10px;
-			}
-			
-			/* Code particles floating around */
+
 			.code-particles {
 				position: absolute;
 				top: 0;
@@ -672,60 +977,57 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				pointer-events: none;
 				overflow: hidden;
 			}
-			
+
 			.code-particle {
 				position: absolute;
-				color: var(--glow-color);
-				opacity: 0.3;
+				color: var(--particle-color);
+				opacity: 0.4;
 				font-family: 'Courier New', monospace;
-				font-size: 10px;
+				font-size: 11px;
 				animation: float-around 10s linear infinite;
 				text-shadow: 0 0 5px currentColor;
+				font-weight: bold;
 			}
-			
+
+			.code-particle.reactive-particle {
+				animation: none;
+			}
+
 			@keyframes float-around {
 				0% {
 					transform: translate(0, 100vh) rotate(0deg);
 					opacity: 0;
 				}
 				10% {
-					opacity: 0.3;
+					opacity: 0.4;
 				}
 				90% {
-					opacity: 0.3;
+					opacity: 0.4;
 				}
 				100% {
 					transform: translate(100px, -100vh) rotate(360deg);
 					opacity: 0;
 				}
 			}
-			
-			/* Theme variations */
-			.theme-cyberpunk {
-				--glow-color: #00ffcc;
-				--hoodie-color: #1a0033;
-				--headphones-accent: #ff00ff;
+
+			@keyframes particle-react-productive {
+				0%, 100% { transform: translateY(0) scale(1); }
+				50% { transform: translateY(-20px) scale(1.2); }
 			}
-			
-			.theme-cozy {
-				--glow-color: #ffcc99;
-				--hoodie-color: #8b6f47;
-				--headphones-accent: #ff9966;
+
+			@keyframes particle-react-stuck {
+				0%, 100% { transform: rotate(0deg) scale(1); }
+				50% { transform: rotate(15deg) scale(1.1); }
 			}
-			
-			.theme-minimal {
-				--glow-color: #cccccc;
-				--hoodie-color: #333333;
-				--headphones-accent: #666666;
+
+			.particle-react-productive {
+				animation: particle-react-productive 0.6s ease-out !important;
 			}
-			
-			.theme-neon {
-				--glow-color: #ff00ff;
-				--hoodie-color: #000033;
-				--headphones-accent: #00ffff;
+
+			.particle-react-stuck {
+				animation: particle-react-stuck 0.6s ease-out !important;
 			}
-			
-			/* Controls */
+
 			.vibe-selector {
 				display: flex;
 				gap: 10px;
@@ -733,588 +1035,1013 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 				justify-content: center;
 				flex-wrap: wrap;
 			}
-			
+
 			.vibe-btn {
 				padding: 12px 20px;
-				border: 2px solid var(--vscode-button-border);
-				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
+				border: 2px solid var(--glow-color);
+				background: var(--bg-secondary);
+				color: var(--text-primary);
 				cursor: pointer;
 				border-radius: 6px;
 				font-size: 14px;
-				transition: all 0.2s;
+				transition: all 0.3s ease;
+				font-weight: bold;
+				text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
 			}
-			
+
 			.vibe-btn:hover {
-				background: var(--vscode-button-hoverBackground);
+				box-shadow: 0 0 15px var(--glow-color);
+				transform: translateY(-2px);
 			}
-			
+
 			.vibe-btn.active {
-				background: var(--vscode-button-secondaryBackground);
-				border-color: var(--vscode-focusBorder);
+				background: var(--glow-color);
+				color: var(--bg-primary);
+				box-shadow: 0 0 20px var(--glow-color);
 			}
-			
+
 			.message {
 				font-size: 16px;
 				margin: 20px 0;
 				padding: 15px;
-				background: var(--vscode-editor-inactiveSelectionBackground);
+				background: var(--bg-secondary);
 				border-radius: 8px;
+				border: 1px solid var(--glow-color);
 				min-height: 60px;
 				display: flex;
 				align-items: center;
 				justify-content: center;
+				box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
 			}
-			
+
 			.state {
 				font-size: 12px;
-				color: var(--vscode-descriptionForeground);
+				color: var(--glow-color);
 				margin-top: 10px;
+				text-transform: uppercase;
+				font-weight: bold;
+				letter-spacing: 1px;
 			}
 
 			.duration {
 				font-size: 12px;
-				color: var(--vscode-descriptionForeground);
+				color: var(--text-secondary);
 				margin-top: 5px;
+				opacity: 0.8;
 			}
-			
+
 			.controls {
 				margin: 30px 0;
-				display: flex;
-				flex-direction: column;
-				gap: 15px;
-				align-items: center;
-			}
-			
-			.control-row {
-				display: flex;
+				display: grid;
+				grid-template-columns: repeat(2, 1fr);
 				gap: 10px;
 				align-items: center;
-				width: 100%;
-				max-width: 300px;
+				max-width: 320px;
+				margin-left: auto;
+				margin-right: auto;
 			}
-			
+
+			.control-row {
+				display: contents;
+			}
+
 			.control-btn {
-				padding: 10px 20px;
-				border: 1px solid var(--vscode-button-border);
-				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
+				padding: 10px 15px;
+				border: 1px solid var(--glow-color);
+				background: var(--bg-secondary);
+				color: var(--text-primary);
 				cursor: pointer;
 				border-radius: 4px;
-				font-size: 14px;
-				flex: 1;
+				font-size: 13px;
+				transition: all 0.3s ease;
+				min-width: 0;
+				font-weight: bold;
+				text-shadow: 0 0 3px rgba(0, 255, 204, 0.5);
 			}
-			
+
 			.control-btn:hover {
-				background: var(--vscode-button-hoverBackground);
+				box-shadow: 0 0 10px var(--glow-color);
+				transform: translateY(-1px);
+			}
+
+			.control-btn:active {
+				transform: translateY(0);
 			}
 
 			.control-select {
-				padding: 10px 20px;
-				border: 1px solid var(--vscode-button-border);
-				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
+				padding: 10px 15px;
+				border: 1px solid var(--glow-color);
+				background: var(--bg-secondary);
+				color: var(--text-primary);
 				cursor: pointer;
 				border-radius: 4px;
-				font-size: 14px;
-				flex: 1;
+				font-size: 13px;
+				transition: all 0.3s ease;
 				min-width: 0;
+				font-weight: bold;
 			}
 
 			.control-select:hover {
-				background: var(--vscode-button-hoverBackground);
+				box-shadow: 0 0 10px var(--glow-color);
 			}
 
 			.control-select:focus {
-				outline: 1px solid var(--vscode-focusBorder);
+				outline: 1px solid var(--glow-color);
+				box-shadow: 0 0 15px var(--glow-color);
 			}
-			
-			.keyboard-shortcuts {
-				margin-top: 20px;
-				padding: 15px;
-				background: var(--vscode-editor-inactiveSelectionBackground);
+
+			.control-select option {
+				background: var(--bg-secondary);
+				color: var(--text-primary);
+			}
+
+			.toast {
+				position: fixed;
+				bottom: 320px;
+				right: 20px;
+				background: var(--bg-secondary);
+				border: 2px solid var(--glow-color);
 				border-radius: 8px;
-				font-size: 11px;
-				text-align: left;
+				padding: 15px 20px;
+				max-width: 300px;
+				z-index: 10000;
+				animation: slideIn 0.3s ease-out, slideOut 0.3s ease-out 4.7s forwards;
+				box-shadow: 0 0 20px rgba(0, 255, 204, 0.5);
+				color: var(--text-secondary);
 			}
-			
-			.shortcut-row {
-				display: flex;
-				justify-content: space-between;
-				margin: 5px 0;
+
+			@keyframes slideIn {
+				from {
+					transform: translateX(400px);
+					opacity: 0;
+				}
+				to {
+					transform: translateX(0);
+					opacity: 1;
+				}
 			}
-			
-			.shortcut-key {
-				font-family: monospace;
-				background: var(--vscode-button-background);
-				padding: 2px 6px;
-				border-radius: 3px;
-				font-size: 10px;
+
+			@keyframes slideOut {
+				from {
+					transform: translateX(0);
+					opacity: 1;
+				}
+				to {
+					transform: translateX(400px);
+					opacity: 0;
+				}
 			}
-			
-			/* Avatar dragging */
-			.avatar-wrapper.draggable {
-				cursor: move;
-			}
-			
-			.avatar-wrapper.dragging {
-				opacity: 0.7;
-				z-index: 1001;
-			}
-			
-			.paused {
-				animation-play-state: paused !important;
-			}
+			.playlist-toast {
+	position: fixed;
+	bottom: 360px;
+	right: 20px;
+	background: var(--bg-secondary);
+	border: 2px solid #4ade80;
+	border-radius: 8px;
+	padding: 15px 20px;
+	max-width: 300px;
+	z-index: 10001;
+	animation: slideIn 0.3s ease-out, slideOut 0.3s ease-out 3.7s forwards;
+	box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+	color: #4ade80;
+	font-weight: bold;
+	letter-spacing: 0.5px;
+}
+
+.error-toast {
+	position: fixed;
+	bottom: 400px;
+	right: 20px;
+	background: var(--bg-secondary);
+	border: 2px solid #ef4444;
+	border-radius: 8px;
+	padding: 15px 20px;
+	max-width: 300px;
+	z-index: 10001;
+	animation: slideIn 0.3s ease-out, slideOut 0.3s ease-out 4.7s forwards;
+	box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+	color: #ef4444;
+	font-weight: bold;
+	letter-spacing: 0.5px;
+}
 		</style>
 	</head>
 	<body>
-		<div class="container" id="mainContainer">
-			<h1>🎵 Vibe Companion</h1>
+		<div class="background-animation"></div>
 
-			<div class="vibe-selector">
-				<button class="vibe-btn active" data-vibe="encouraging">😊 Encouraging</button>
-				<button class="vibe-btn" data-vibe="roasting">😏 Roasting</button>
-				<button class="vibe-btn" data-vibe="neutral">🤖 Neutral</button>
-			</div>
+		<!-- Dropdown Menu -->
+		<div class="dropdown-menu">
+    <button class="dropdown-toggle" id="dropdownToggle">⋯</button>
+    <div class="dropdown-content" id="dropdownContent">
+        <div class="dropdown-section">
+            <div class="dropdown-section-title">Visualizations</div>
+            <div class="dropdown-item" data-action="toggleWaveform">
+                <span>🎵 Waveform</span>
+                <span class="dropdown-checkmark" id="waveformCheckmark">✓</span>
+            </div>
+            <div class="dropdown-item" data-action="toggleParticles">
+                <span>✨ Particles</span>
+                <span class="dropdown-checkmark" id="particlesCheckmark">✓</span>
+            </div>
+        </div>
+        
+        <div class="dropdown-section">
+            <div class="dropdown-section-title">Theme</div>
+            <div class="dropdown-item" data-action="setTheme" data-theme="cyberpunk">
+                <span>Cyberpunk</span>
+                <span class="dropdown-checkmark" id="themeCyberpunkCheckmark">✓</span>
+            </div>
+            <div class="dropdown-item" data-action="setTheme" data-theme="cozy">
+                <span>Cozy</span>
+                <span class="dropdown-checkmark" id="themeCozyCheckmark"></span>
+            </div>
+            <div class="dropdown-item" data-action="setTheme" data-theme="minimal">
+                <span>Minimal</span>
+                <span class="dropdown-checkmark" id="themeMinimalCheckmark"></span>
+            </div>
+            <div class="dropdown-item" data-action="setTheme" data-theme="neon">
+                <span>Neon</span>
+                <span class="dropdown-checkmark" id="themeNeonCheckmark"></span>
+            </div>
+        </div>
 
-			<!-- IMAGE AVATAR -->
-			<div class="avatar-wrapper" id="avatarWrapper">
-				<div class="avatar-state-idle" id="avatarState">
-					<div class="image-avatar-container">
-						<img id="avatarImage" class="avatar-image" src="" alt="Coding Avatar">
-						<div class="thought-bubble" id="thoughtBubble"></div>
-					</div>
-					<div class="code-particles" id="codeParticles"></div>
-				</div>
-			</div>
+        <div class="dropdown-section">
+            <div class="dropdown-section-title">Settings</div>
+            <div class="dropdown-item" data-action="toggleNightMode">
+                <span>🌙 Night Mode</span>
+                <span class="dropdown-checkmark" id="nightModeCheckmark"></span>
+            </div>
+            <div class="dropdown-item" data-action="toggleReactions">
+                <span>🎭 Reactions</span>
+                <span class="dropdown-checkmark" id="reactionsCheckmark">✓</span>
+            </div>
+            <div class="dropdown-item" data-action="toggleAnimations">
+                <span>🎬 Animations</span>
+                <span class="dropdown-checkmark" id="animationsCheckmark">✓</span>
+            </div>
+        </div>
+        
+        <div class="dropdown-item" data-action="testDialogue">
+            <span>💬 Test Quote</span>
+            <span class="dropdown-checkmark"></span>
+        </div>
+        
+        <div class="dropdown-section" style="border-top: 1px solid var(--glow-color); margin-top: 8px;">
+            <div class="dropdown-section-title">Dialogue Frequency</div>
+            <select id="dialogueFrequencyDropdown" style="width: 100%; padding: 6px; background: var(--bg-tertiary); border: 1px solid var(--glow-color); color: var(--text-secondary); border-radius: 4px;">
+                <option value="off">Off</option>
+                <option value="rare">Rare (30m)</option>
+                <option value="normal" selected>Normal (10m)</option>
+                <option value="frequent">Frequent (5m)</option>
+            </select>
+        </div>
+    </div>
+</div>
 
-			<div class="message" id="message">
-				Ready to vibe! Start coding...
-			</div>
+<div class="visualizer-panel" id="visualizerPanel">
+    <div class="visualizer-title">🎵 Waveform</div>
+    <canvas id="waveform"></canvas>
+</div>
 
-			<div class="state" id="state">
-				State: idle
-			</div>
+<div class="container" id="mainContainer">
+    <h1>🎵 Vibe Companion</h1>
 
-			<div class="duration" id="duration">
-				Duration: 0s
-			</div>
+    <div class="vibe-selector">
+        <button class="vibe-btn active" data-vibe="encouraging">😊 Encouraging</button>
+        <button class="vibe-btn" data-vibe="roasting">😏 Roasting</button>
+        <button class="vibe-btn" data-vibe="neutral">🤖 Neutral</button>
+    </div>
 
-			<div class="controls">
-				<div class="control-row">
-					<button class="control-btn" id="startMusicBtn">🎵 Start Music</button>
-					<button class="control-btn" id="musicModeBtn">🎵 Auto</button>
-				</div>
-				<div class="control-row">
-					<button class="control-btn" id="pauseBtn">⏸️ Pause</button>
-					<select class="control-select" id="themeSelect">
-						<option value="default">🎨 Theme</option>
-						<option value="cyberpunk">Cyberpunk</option>
-						<option value="cozy">Cozy</option>
-						<option value="minimal">Minimal</option>
-						<option value="neon">Neon</option>
-					</select>
-				</div>
-				<div class="control-row">
-					<select class="control-select" id="beatsSelect">
-						<option value="default">🥁 Beats</option>
-						<option value="kick">Kick</option>
-						<option value="snare">Snare</option>
-						<option value="hihat">Hi-Hat</option>
-						<option value="clap">Clap</option>
-						<option value="tom">Tom</option>
-					</select>
-					<select class="control-select" id="rhythmSelect">
-						<option value="default">🎼 Rhythm</option>
-						<option value="straight">Straight</option>
-						<option value="swing">Swing</option>
-						<option value="shuffle">Shuffle</option>
-						<option value="triplet">Triplet</option>
-						<option value="polyrhythm">Polyrhythm</option>
-					</select>
-					<select class="control-select" id="speedSelect">
-						<option value="default">⚡ Speed</option>
-						<option value="slow">Slow</option>
-						<option value="medium">Medium</option>
-						<option value="fast">Fast</option>
-						<option value="very-fast">Very Fast</option>
-					</select>
-				</div>
-			</div>
+    <div class="avatar-wrapper" id="avatarWrapper">
+        <div class="avatar-state-idle" id="avatarState">
+            <div class="avatar-reactions" id="avatarReactions"></div>
+            <div class="image-avatar-container">
+                <img id="avatarImage" class="avatar-image" src="" alt="Coding Avatar">
+                <div class="thought-bubble" id="thoughtBubble"></div>
+            </div>
+            <div class="code-particles" id="codeParticles"></div>
+        </div>
+    </div>
 
-		</div>
+    <div class="message" id="message">
+        Ready to vibe! Start coding...
+    </div>
 
+    <div class="state" id="state">
+        State: idle
+    </div>
+
+    <div class="duration" id="duration">
+        Duration: 0s
+    </div>
+
+    <div class="controls">
+        <button class="control-btn" id="startMusicBtn">🎵 Start</button>
+        <button class="control-btn" id="musicModeBtn">Auto</button>
+        <button class="control-btn" id="pauseBtn">⏸️ Pause</button>
+        <select class="control-select" id="beatsSelect">
+            <option value="default">Beats</option>
+            <option value="kick">Kick</option>
+            <option value="snare">Snare</option>
+            <option value="hihat">Hi-Hat</option>
+            <option value="clap">Clap</option>
+            <option value="tom">Tom</option>
+        </select>
+        <select class="control-select" id="rhythmSelect">
+            <option value="default">Rhythm</option>
+            <option value="straight">Straight</option>
+            <option value="swing">Swing</option>
+            <option value="shuffle">Shuffle</option>
+            <option value="triplet">Triplet</option>
+            <option value="polyrhythm">Polyrhythm</option>
+        </select>
+        <select class="control-select" id="speedSelect">
+            <option value="default">Speed</option>
+            <option value="slow">Slow</option>
+            <option value="medium">Medium</option>
+            <option value="fast">Fast</option>
+            <option value="very-fast">Very Fast</option>
+        </select>
+    </div>
+</div>
 		<script>
-			const vscode = acquireVsCodeApi();
+    const vscode = acquireVsCodeApi();
 
-			let currentVibe = 'encouraging';
-			let currentState = 'idle';
-			let isPaused = false;
-			let currentTheme = 'cyberpunk';
-			let blinkInterval = null;
-			let thoughtBubbleTimeout = null;
-			let isCompact = false;
-			let musicMode = 'automatic';
+    let currentVibe = 'encouraging';
+    let currentState = 'idle';
+    let isPaused = false;
+    let currentTheme = 'cyberpunk';
+    let isCompact = false;
+    let musicMode = 'automatic';
+    let particlesEnabled = true;
+    let reactionsEnabled = true;
+    let animationsEnabled = true;
+    let nightModeEnabled = false;
+    let waveformEnabled = false;
+    let audioContext = null;
+    let analyser = null;
+    let animationFrameId = null;
 
-			const imageUris = ${JSON.stringify(Object.fromEntries(Object.entries(imageUris).map(([k, v]) => [k, v.toString()])))};
-			
+    const imageUris = ${JSON.stringify(Object.fromEntries(Object.entries(imageUris).map(([k, v]) => [k, v.toString()])))};
 
-			// Generate floating code particles
-			function generateCodeParticles() {
-				const particlesContainer = document.getElementById('codeParticles');
-				particlesContainer.innerHTML = '';
+    const stateReactions = {
+        productive: '⚡',
+        stuck: '🤔',
+        test_passed: '🎉',
+        test_failed: '😵',
+        building: '🔨',
+        idle: '😴',
+        procrastinating: '🌙'
+    };
 
-				const codeSnippets = ['{', '}', '()', '=>', 'const', 'let', 'function', 'class', 'import', 'export'];
+    // Dropdown functionality
+    function toggleDropdown() {
+        const dropdown = document.getElementById('dropdownContent');
+        dropdown.classList.toggle('active');
+    }
 
-				for (let i = 0; i < 15; i++) {
-					const particle = document.createElement('div');
-					particle.className = 'code-particle';
-					particle.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
-					particle.style.left = Math.random() * 100 + '%';
-					particle.style.top = Math.random() * 100 + '%';
-					particle.style.animationDelay = Math.random() * 10 + 's';
-					particlesContainer.appendChild(particle);
-				}
-			}
+    function closeDropdown() {
+        document.getElementById('dropdownContent').classList.remove('active');
+    }
 
-			// Update avatar state
-			function updateAvatarState(state) {
-				currentState = state;
-				document.getElementById('state').textContent = 'State: ' + state;
-				document.getElementById('avatarState').className = 'avatar-state-' + state;
+    function updateDropdownVisuals() {
+        // Update checkmarks for visualizations
+        document.getElementById('waveformCheckmark').textContent = waveformEnabled ? '✓' : '';
+        document.getElementById('particlesCheckmark').textContent = particlesEnabled ? '✓' : '';
+        
+        // Update checkmarks for themes
+        document.getElementById('themeCyberpunkCheckmark').textContent = currentTheme === 'cyberpunk' ? '✓' : '';
+        document.getElementById('themeCozyCheckmark').textContent = currentTheme === 'cozy' ? '✓' : '';
+        document.getElementById('themeMinimalCheckmark').textContent = currentTheme === 'minimal' ? '✓' : '';
+        document.getElementById('themeNeonCheckmark').textContent = currentTheme === 'neon' ? '✓' : '';
+        
+        // Update checkmarks for settings
+        document.getElementById('nightModeCheckmark').textContent = nightModeEnabled ? '✓' : '';
+        document.getElementById('reactionsCheckmark').textContent = reactionsEnabled ? '✓' : '';
+        document.getElementById('animationsCheckmark').textContent = animationsEnabled ? '✓' : '';
+    }
 
-				// Update avatar image based on state
-				const avatarImg = document.getElementById('avatarImage');
-				if (avatarImg) {
-					const imageSrc = imageUris[state] || imageUris['idle'] || '';
-					if (imageSrc) {
-						avatarImg.src = imageSrc;
-						avatarImg.style.display = 'block'; // Ensure it's visible
-						avatarImg.onerror = () => {
-							console.log('Image failed to load:', imageSrc);
-							avatarImg.style.display = 'none';
-						};
-					} else {
-						avatarImg.style.display = 'none';
-					}
-				}
+    function initAudioContext() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+        }
+    }
 
-				// Show thought bubble for stuck state
-				if (state === 'stuck') {
-					showThoughtBubble('🤔');
-				} else if (state === 'test_failed') {
-					showThoughtBubble('😵');
-				} else {
-					hideThoughtBubble();
-				}
-			}
+    function drawWaveform() {
+        if (!waveformEnabled || !analyser) return;
 
-			// Toggle compact mode
-			function toggleCompact() {
-				isCompact = !isCompact;
-				const container = document.getElementById('mainContainer');
-				if (isCompact) {
-					container.classList.add('compact');
-				} else {
-					container.classList.remove('compact');
-				}
-			}
+        const canvas = document.getElementById('waveform');
+        if (!canvas) return;
 
-			// Toggle music mode
-			function toggleMusicMode() {
-				musicMode = musicMode === 'automatic' ? 'playlist' : 'automatic';
-				const btn = document.getElementById('musicModeBtn');
-				btn.textContent = musicMode === 'automatic' ? '🎵 Auto' : '🎶 Playlist';
-				vscode.postMessage({ command: 'toggleMusicMode' });
-			}
+        const canvasCtx = canvas.getContext('2d');
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
 
-			// Show thought bubble
-			function showThoughtBubble(emoji) {
-				const bubble = document.getElementById('thoughtBubble');
-				bubble.textContent = emoji;
-				bubble.classList.add('show');
-				if (thoughtBubbleTimeout) clearTimeout(thoughtBubbleTimeout);
-				thoughtBubbleTimeout = setTimeout(() => {
-					hideThoughtBubble();
-				}, 3000);
-			}
+        canvasCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-tertiary');
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-			// Hide thought bubble
-			function hideThoughtBubble() {
-				document.getElementById('thoughtBubble').classList.remove('show');
-			}
+        const glowColor = getComputedStyle(document.body).getPropertyValue('--glow-color').trim();
+        canvasCtx.strokeStyle = glowColor;
+        canvasCtx.lineWidth = 2;
+        canvasCtx.beginPath();
 
-			// Music generation
-			let currentMusic = null;
-			let strudelPattern = null;
+        const sliceWidth = (canvas.width * 1.0) / bufferLength;
+        let x = 0;
 
-			function playMusic(state, vibe) {
-				stopMusic();
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = (v * canvas.height) / 2;
 
-				// Simple Tone.js music generation based on state
-				const synth = new Tone.Synth().toDestination();
-				const notes = {
-					idle: ['C4', 'E4', 'G4'],
-					productive: ['D4', 'F#4', 'A4'],
-					stuck: ['A3', 'C4', 'E4'],
-					procrastinating: ['B3', 'D4', 'F#4'],
-					testing: ['E4', 'G4', 'B4'],
-					building: ['F4', 'A4', 'C5'],
-					test_passed: ['G4', 'B4', 'D5'],
-					test_failed: ['A3', 'C4', 'D#4']
-				};
+            if (i === 0) {
+                canvasCtx.moveTo(x, y);
+            } else {
+                canvasCtx.lineTo(x, y);
+            }
 
-				const sequence = new Tone.Sequence((time, note) => {
-					synth.triggerAttackRelease(note, '8n', time);
-				}, notes[state] || notes.idle, '4n');
+            x += sliceWidth;
+        }
 
-				sequence.loop = true;
-				sequence.start();
-				currentMusic = sequence;
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
 
-				Tone.Transport.start();
-			}
+        animationFrameId = requestAnimationFrame(drawWaveform);
+    }
 
-			function stopMusic() {
-				if (currentMusic) {
-					currentMusic.stop();
-					currentMusic.dispose();
-					currentMusic = null;
-				}
-				if (strudelPattern) {
-					strudelPattern.stop();
-					strudelPattern = null;
-				}
-			}
+    function generateCodeParticles() {
+        const particlesContainer = document.getElementById('codeParticles');
+        if (!particlesContainer) return;
+        
+        particlesContainer.innerHTML = '';
 
-			function changeBeats(beatType) {
-				// Implement beat changes with Strudel
-				console.log('Changing beats to:', beatType);
-				// This would integrate with Strudel to change beat patterns
-				vscode.postMessage({ command: 'showQuote', quote: 'Beats changed to ' + beatType + '!' });
-			}
+        if (!particlesEnabled) return;
 
-			function changeRhythm(rhythmType) {
-				// Implement rhythm changes with Strudel
-				console.log('Changing rhythm to:', rhythmType);
-				// This would integrate with Strudel to change rhythm patterns
-				vscode.postMessage({ command: 'showQuote', quote: 'Rhythm changed to ' + rhythmType + '!' });
-			}
+        const codeSnippets = ['{', '}', '()', '=>', 'const', 'let', 'function', 'class', 'import', 'export', '</', '/>'];
 
-			function changeSpeed(speedType) {
-				// Implement speed changes
-				let newBpm = 120; // default
-				switch (speedType) {
-					case 'slow': newBpm = 80; break;
-					case 'medium': newBpm = 120; break;
-					case 'fast': newBpm = 160; break;
-					case 'very-fast': newBpm = 200; break;
-				}
+        for (let i = 0; i < 15; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'code-particle';
+            particle.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 10 + 's';
+            particlesContainer.appendChild(particle);
+        }
+    }
 
-				if (Tone.Transport.bpm) {
-					Tone.Transport.bpm.value = newBpm;
-				}
-				vscode.postMessage({ command: 'showQuote', quote: 'Speed changed to ' + speedType + '!' });
-			}
+    function reactiveParticleEffect(state) {
+        if (!particlesEnabled || !reactionsEnabled) return;
 
-			function updatePersonalityMessage(vibe) {
-				const messages = {
-					encouraging: 'Ready to vibe! Start coding...',
-					roasting: 'What are you waiting for? Code already!',
-					neutral: 'Systems online. Awaiting input.'
-				};
-				document.getElementById('message').textContent = messages[vibe] || messages.encouraging;
-			}
+        const particlesContainer = document.getElementById('codeParticles');
+        if (!particlesContainer) return;
+        
+        const particles = particlesContainer.querySelectorAll('.code-particle');
 
-			// Initialize
-			document.addEventListener('DOMContentLoaded', async () => {
-				// Start Tone.js
-				await Tone.start();
+        particles.forEach((particle, index) => {
+            setTimeout(() => {
+                if (state === 'productive' || state === 'building') {
+                    particle.classList.add('particle-react-productive');
+                } else if (state === 'stuck') {
+                    particle.classList.add('particle-react-stuck');
+                }
 
-				updateAvatarState('idle');
-				updatePersonalityMessage('encouraging');
-				generateCodeParticles();
+                setTimeout(() => {
+                    particle.classList.remove('particle-react-productive', 'particle-react-stuck');
+                }, 600);
+            }, index * 50);
+        });
+    }
 
-				// Avatar click to toggle compact mode
-				document.getElementById('avatarWrapper').addEventListener('click', (e) => {
-					if (!e.target.closest('.thought-bubble')) {
-						toggleCompact();
-					}
-				});
+    function triggerAvatarReaction(state) {
+        if (!reactionsEnabled) return;
 
-				// Vibe selector
-				document.querySelectorAll('.vibe-btn').forEach(btn => {
-					btn.addEventListener('click', () => {
-						document.querySelectorAll('.vibe-btn').forEach(b => b.classList.remove('active'));
-						btn.classList.add('active');
-						currentVibe = btn.dataset.vibe;
-						updatePersonalityMessage(currentVibe);
-						vscode.postMessage({ command: 'vibeChanged', vibe: currentVibe });
-					});
-				});
+        const reaction = stateReactions[state];
+        if (!reaction) return;
 
-				// Control buttons
-				document.getElementById('startMusicBtn').addEventListener('click', (e) => {
-					e.stopPropagation();
-					vscode.postMessage({ command: 'startMusic' });
-				});
+        const reactionsContainer = document.getElementById('avatarReactions');
+        if (!reactionsContainer) return;
+        
+        reactionsContainer.textContent = reaction;
+        reactionsContainer.style.opacity = '1';
 
-				document.getElementById('musicModeBtn').addEventListener('click', (e) => {
-					e.stopPropagation();
-					toggleMusicMode();
-				});
+        setTimeout(() => {
+            reactionsContainer.style.opacity = '0';
+        }, 1800);
+    }
 
-				document.getElementById('pauseBtn').addEventListener('click', (e) => {
-					e.stopPropagation();
-					vscode.postMessage({ command: 'pauseAnimations' });
-				});
+    function updateAvatarState(state) {
+        currentState = state;
+        const stateElement = document.getElementById('state');
+        if (stateElement) {
+            stateElement.textContent = 'State: ' + state;
+        }
 
-				document.getElementById('themeSelect').addEventListener('change', (e) => {
-					e.stopPropagation();
-					const value = e.target.value;
-					if (value !== 'default') {
-						vscode.postMessage({ command: 'changeTheme', theme: value });
-						e.target.value = 'default'; // Reset to default
-					}
-				});
+        const avatarState = document.getElementById('avatarState');
+        if (avatarState) {
+            if (animationsEnabled) {
+                avatarState.className = 'avatar-state-' + state;
+            } else {
+                avatarState.className = '';
+            }
+        }
 
-				// Strudel controls
-				document.getElementById('beatsSelect').addEventListener('change', (e) => {
-					e.stopPropagation();
-					const value = e.target.value;
-					if (value !== 'default') {
-						vscode.postMessage({ command: 'changeBeats', value: value });
-						e.target.value = 'default'; // Reset to default
-					}
-				});
+        const avatarImg = document.getElementById('avatarImage');
+        if (avatarImg) {
+            const imageSrc = imageUris[state] || imageUris['idle'] || '';
+            if (imageSrc) {
+                avatarImg.src = imageSrc;
+                avatarImg.style.display = 'block';
+                avatarImg.onerror = function() {
+                    console.log('Image failed to load:', imageSrc);
+                    avatarImg.style.display = 'none';
+                };
+            } else {
+                console.log('No image source found for state:', state);
+                avatarImg.style.display = 'none';
+            }
+        }
 
-				document.getElementById('rhythmSelect').addEventListener('change', (e) => {
-					e.stopPropagation();
-					const value = e.target.value;
-					if (value !== 'default') {
-						vscode.postMessage({ command: 'changeRhythm', value: value });
-						e.target.value = 'default'; // Reset to default
-					}
-				});
+        if (state === 'stuck') {
+            showThoughtBubble('🤔');
+        } else if (state === 'test_failed') {
+            showThoughtBubble('😵');
+        } else {
+            hideThoughtBubble();
+        }
 
-				document.getElementById('speedSelect').addEventListener('change', (e) => {
-					e.stopPropagation();
-					const value = e.target.value;
-					if (value !== 'default') {
-						vscode.postMessage({ command: 'changeSpeed', value: value });
-						e.target.value = 'default'; // Reset to default
-					}
-				});
-			});
+        reactiveParticleEffect(state);
+        triggerAvatarReaction(state);
+    }
 
-			// Handle messages from extension
-			window.addEventListener('message', event => {
-				const message = event.data;
+    function toggleCompact() {
+        isCompact = !isCompact;
+        const container = document.getElementById('mainContainer');
+        if (container) {
+            if (isCompact) {
+                container.classList.add('compact');
+            } else {
+                container.classList.remove('compact');
+            }
+        }
+    }
 
-				switch (message.command) {
-					case 'init':
-						musicMode = message.musicMode;
-						document.getElementById('musicModeBtn').textContent = musicMode === 'automatic' ? '🎵 Auto' : '🎶 Playlist';
-						// Initialize pause button state
-						isPaused = message.isPaused || false;
-						document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
-						break;
-					case 'stateChanged':
-						updateAvatarState(message.state);
-						break;
-					case 'updateAvatarState':
-						updateAvatarState(message.state);
-						break;
-					case 'playMusic':
-						playMusic(message.state, message.vibe);
-						break;
-					case 'pauseMusic':
-						stopMusic();
-						break;
-					case 'stopMusic':
-						stopMusic();
-						break;
-					case 'toggleAvatar':
-						const wrapper = document.getElementById('avatarWrapper');
-						if (message.visible) {
-							wrapper.classList.remove('hidden');
-						} else {
-							wrapper.classList.add('hidden');
-						}
-						break;
-					case 'minimizeAvatar':
-						const avatarWrapper = document.getElementById('avatarWrapper');
-						if (message.minimized) {
-							avatarWrapper.classList.add('minimized');
-						} else {
-							avatarWrapper.classList.remove('minimized');
-						}
-						break;
-					case 'pauseAnimations':
-						isPaused = !isPaused;
-						if (isPaused) {
-							musicEngine?.pause();
-							activityDetector?.pause();
-						} else {
-							musicEngine?.resume();
-							activityDetector?.resume();
-						}
-						document.body.classList.toggle('paused');
-						// Send pause state to webview
-						currentPanel?.webview.postMessage({
-							command: 'pauseStateChanged',
-							isPaused: isPaused
-						});
-						break;
-					case 'changeTheme':
-						document.body.classList.remove('theme-' + currentTheme);
-						currentTheme = message.theme;
-						document.body.classList.add('theme-' + currentTheme);
-						break;
-					case 'resetPosition':
-						const avatarW = document.getElementById('avatarWrapper');
-						avatarW.classList.remove('minimized');
-						break;
-					case 'showQuote':
-						document.getElementById('message').textContent = message.quote;
-						break;
-					case 'showStateMessage':
-						document.getElementById('message').textContent = message.message;
-						break;
-					case 'hint':
-						document.getElementById('message').textContent = message.text;
-						break;
-					case 'metrics':
-						document.getElementById('message').textContent = 'Metrics: ' + JSON.stringify(message.data);
-						break;
-					case 'changeBeats':
-						changeBeats(message.value);
-						break;
-					case 'changeRhythm':
-						changeRhythm(message.value);
-						break;
-					case 'changeSpeed':
-						changeSpeed(message.value);
-						break;
-					case 'updateDuration':
-						const durationElement = document.getElementById('duration');
-						if (durationElement) {
-							const seconds = message.duration;
-							const minutes = Math.floor(seconds / 60);
-							const remainingSeconds = seconds % 60;
-							durationElement.textContent = 'Duration: ' + minutes + 'm ' + remainingSeconds + 's';
-						}
-						break;
-					case 'toggleUI':
-						toggleCompact();
-						break;
-					case 'pauseStateChanged':
-						isPaused = message.isPaused;
-						document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
-						break;
-				}
-			});
-		</script>
+    function toggleMusicMode() {
+        musicMode = musicMode === 'automatic' ? 'playlist' : 'automatic';
+        const btn = document.getElementById('musicModeBtn');
+        if (btn) {
+            btn.textContent = musicMode === 'automatic' ? 'Auto' : 'Playlist';
+        }
+        vscode.postMessage({ command: 'toggleMusicMode' });
+    }
+
+    function showThoughtBubble(emoji) {
+        const bubble = document.getElementById('thoughtBubble');
+        if (bubble) {
+            bubble.textContent = emoji;
+            bubble.classList.add('show');
+            setTimeout(function() {
+                hideThoughtBubble();
+            }, 3000);
+        }
+    }
+
+    function hideThoughtBubble() {
+        const bubble = document.getElementById('thoughtBubble');
+        if (bubble) {
+            bubble.classList.remove('show');
+        }
+    }
+
+    let currentMusic = null;
+
+    function playMusic(state, vibe) {
+        stopMusic();
+
+        // This is a placeholder - actual music would be handled by the extension
+        console.log('Would play music for state:', state, 'vibe:', vibe);
+    }
+
+    function stopMusic() {
+        if (currentMusic) {
+            currentMusic.stop();
+            currentMusic.dispose();
+            currentMusic = null;
+        }
+    }
+
+    function updatePersonalityMessage(vibe) {
+        const messages = {
+            encouraging: 'Ready to vibe! Start coding...',
+            roasting: 'What are you waiting for? Code already!',
+            neutral: 'Systems online. Awaiting input.'
+        };
+        const messageElement = document.getElementById('message');
+        if (messageElement) {
+            messageElement.textContent = messages[vibe] || messages.encouraging;
+        }
+    }
+
+    function showDialogueToast(quote) {
+        const existingToast = document.querySelector('.toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = quote;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 5000);
+    }
+
+    function showPlaylistToast(message) {
+        const existingToast = document.querySelector('.playlist-toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'playlist-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 4000);
+    }
+
+    function showErrorToast(message) {
+        const existingToast = document.querySelector('.error-toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'error-toast';
+        toast.textContent = '⚠️ ' + message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 5000);
+    }
+
+    function applyTheme(theme) {
+        if (currentTheme === theme) {
+            return; // Don't send message if theme hasn't changed
+        }
+        document.body.classList.remove('theme-cyberpunk', 'theme-cozy', 'theme-minimal', 'theme-neon');
+        if (theme !== 'default') {
+            document.body.classList.add('theme-' + theme);
+            currentTheme = theme;
+            generateCodeParticles();
+            updateDropdownVisuals();
+            vscode.postMessage({ command: 'changeTheme', theme: theme });
+        }
+    }
+
+    function toggleNightMode() {
+        nightModeEnabled = !nightModeEnabled;
+        document.body.classList.toggle('night-mode');
+        updateDropdownVisuals();
+    }
+
+    function toggleWaveform() {
+        waveformEnabled = !waveformEnabled;
+        const visualizerPanel = document.getElementById('visualizerPanel');
+        if (visualizerPanel) {
+            visualizerPanel.classList.toggle('active');
+        }
+
+        if (waveformEnabled) {
+            initAudioContext();
+            drawWaveform();
+        } else if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+        }
+        updateDropdownVisuals();
+    }
+
+    function toggleParticles() {
+        particlesEnabled = !particlesEnabled;
+        if (particlesEnabled) {
+            generateCodeParticles();
+        } else {
+            const particlesContainer = document.getElementById('codeParticles');
+            if (particlesContainer) {
+                particlesContainer.innerHTML = '';
+            }
+        }
+        updateDropdownVisuals();
+    }
+
+    function toggleReactions() {
+        reactionsEnabled = !reactionsEnabled;
+        updateDropdownVisuals();
+    }
+
+    function toggleAnimations() {
+        animationsEnabled = !animationsEnabled;
+        const avatarState = document.getElementById('avatarState');
+        if (avatarState) {
+            if (animationsEnabled) {
+                avatarState.className = 'avatar-state-' + currentState;
+            } else {
+                avatarState.className = '';
+            }
+        }
+        updateDropdownVisuals();
+    }
+
+    // Initialize everything when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Webview loaded');
+        
+        updateAvatarState('idle');
+        updatePersonalityMessage('encouraging');
+        generateCodeParticles();
+        updateDropdownVisuals();
+
+        // Dropdown event listeners - FIXED
+        const dropdownToggle = document.getElementById('dropdownToggle');
+        if (dropdownToggle) {
+            dropdownToggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleDropdown();
+            });
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown-menu')) {
+                closeDropdown();
+            }
+        });
+
+        // Dropdown item click handlers - FIXED
+        document.querySelectorAll('.dropdown-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const action = this.dataset.action;
+                const theme = this.dataset.theme;
+
+                switch (action) {
+                    case 'toggleWaveform':
+                        toggleWaveform();
+                        break;
+                    case 'toggleParticles':
+                        toggleParticles();
+                        break;
+                    case 'setTheme':
+                        if (theme) {
+                            applyTheme(theme);
+                        }
+                        break;
+                    case 'toggleNightMode':
+                        toggleNightMode();
+                        break;
+                    case 'toggleReactions':
+                        toggleReactions();
+                        break;
+                    case 'toggleAnimations':
+                        toggleAnimations();
+                        break;
+                    case 'testDialogue':
+                        console.log('Test dialogue clicked');
+                        vscode.postMessage({ command: 'testDialogue' });
+                        closeDropdown();
+                        break;
+                }
+                closeDropdown();
+            });
+        });
+
+        // Dialogue frequency dropdown
+        const dialogueFrequency = document.getElementById('dialogueFrequencyDropdown');
+        if (dialogueFrequency) {
+            dialogueFrequency.addEventListener('change', function(e) {
+                e.stopPropagation();
+                const value = this.value;
+                console.log('Dialogue frequency changed:', value);
+                vscode.postMessage({ command: 'setDialogueFrequency', frequency: value });
+            });
+        }
+
+        // Avatar click to toggle compact mode
+        const avatarWrapper = document.getElementById('avatarWrapper');
+        if (avatarWrapper) {
+            avatarWrapper.addEventListener('click', function(e) {
+                if (!e.target.closest('.thought-bubble')) {
+                    toggleCompact();
+                }
+            });
+        }
+
+        // Vibe buttons
+        document.querySelectorAll('.vibe-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.vibe-btn').forEach(function(b) {
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
+                currentVibe = btn.dataset.vibe;
+                updatePersonalityMessage(currentVibe);
+                vscode.postMessage({ command: 'vibeChanged', vibe: currentVibe });
+            });
+        });
+
+        // Control buttons
+        const startMusicBtn = document.getElementById('startMusicBtn');
+        if (startMusicBtn) {
+            startMusicBtn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                console.log('Start music clicked');
+                
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                    console.log('Tone.js started');
+                }
+                
+                vscode.postMessage({ command: 'startMusic' });
+            });
+        }
+
+        const musicModeBtn = document.getElementById('musicModeBtn');
+        if (musicModeBtn) {
+            musicModeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                console.log('Music mode clicked');
+                toggleMusicMode();
+            });
+        }
+
+        const pauseBtn = document.getElementById('pauseBtn');
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                console.log('Pause clicked');
+                vscode.postMessage({ command: 'pauseMusic' });
+            });
+        }
+
+        // Select controls
+        const beatsSelect = document.getElementById('beatsSelect');
+        if (beatsSelect) {
+            beatsSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                const value = e.target.value;
+                console.log('Beats selected:', value);
+                if (value !== 'default') {
+                    vscode.postMessage({ command: 'changeBeats', value: value });
+                    e.target.value = 'default';
+                }
+            });
+        }
+
+        const rhythmSelect = document.getElementById('rhythmSelect');
+        if (rhythmSelect) {
+            rhythmSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                const value = e.target.value;
+                console.log('Rhythm selected:', value);
+                if (value !== 'default') {
+                    vscode.postMessage({ command: 'changeRhythm', value: value });
+                    e.target.value = 'default';
+                }
+            });
+        }
+
+        const speedSelect = document.getElementById('speedSelect');
+        if (speedSelect) {
+            speedSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                const value = e.target.value;
+                console.log('Speed selected:', value);
+                if (value !== 'default') {
+                    vscode.postMessage({ command: 'changeSpeed', value: value });
+                    e.target.value = 'default';
+                }
+            });
+        }
+
+        console.log('All event listeners attached');
+    });
+
+    // Message handler from extension
+    window.addEventListener('message', function(event) {
+        const message = event.data;
+        console.log('Webview received:', message.command);
+
+        switch (message.command) {
+            case 'init':
+                console.log('Initialized with mode:', message.musicMode);
+                musicMode = message.musicMode;
+                isPaused = message.isPaused || false;
+                currentTheme = message.theme || 'cyberpunk';
+                const musicModeBtn = document.getElementById('musicModeBtn');
+                if (musicModeBtn) {
+                    musicModeBtn.textContent = musicMode === 'automatic' ? 'Auto' : 'Playlist';
+                }
+                const pauseBtn = document.getElementById('pauseBtn');
+                if (pauseBtn) {
+                    pauseBtn.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+                }
+                if (currentTheme !== 'default') {
+                    applyTheme(currentTheme);
+                }
+                updateDropdownVisuals();
+                break;
+            
+            case 'musicStarted':
+                const startBtn = document.getElementById('startMusicBtn');
+                if (startBtn) {
+                    startBtn.textContent = '🎵 Playing';
+                    startBtn.style.opacity = '0.6';
+                }
+                break;
+            
+            case 'stateChanged':
+            case 'updateAvatarState':
+                updateAvatarState(message.state);
+                break;
+            
+            case 'playMusic':
+                console.log('Playing music for:', message.state);
+                playMusic(message.state, message.vibe);
+                break;
+            
+            case 'pauseMusic':
+                console.log('Pausing music');
+                stopMusic();
+                break;
+            
+            case 'stopMusic':
+                stopMusic();
+                break;
+            
+            case 'pauseStateChanged':
+                isPaused = message.isPaused;
+                const pauseButton = document.getElementById('pauseBtn');
+                if (pauseButton) {
+                    pauseButton.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+                }
+                if (isPaused) {
+                    stopMusic();
+                }
+                break;
+            
+            case 'showDialogueToast':
+                showDialogueToast(message.quote);
+                break;
+            
+            case 'showStateMessage':
+                const messageElement = document.getElementById('message');
+                if (messageElement) {
+                    messageElement.textContent = message.message;
+                }
+                break;
+            
+            case 'updateDuration':
+                const durationElement = document.getElementById('duration');
+                if (durationElement) {
+                    const seconds = message.duration;
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSeconds = seconds % 60;
+                    durationElement.textContent = 'Duration: ' + minutes + 'm ' + remainingSeconds + 's';
+                }
+                break;
+            
+            case 'toggleUI':
+                toggleCompact();
+                break;
+
+            case 'applyTheme':
+                applyTheme(message.theme);
+                break;
+
+            case 'visualizationToggled':
+                console.log('Visualization toggled:', message.type);
+                break;
+
+            case 'nightModeToggled':
+                console.log('Night mode toggled');
+                break;
+            
+            case 'playlistOpened':
+                console.log('Playlist opened:', message.title);
+                showPlaylistToast('Now playing: ' + message.title + ' 🎵');
+                break;
+            case 'playlistError':
+                console.log('Playlist error:', message.error);
+                showErrorToast(message.error);
+                break;
+        }
+    });
+</script>
 	</body>
 </html>`;
 }
