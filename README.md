@@ -2,16 +2,32 @@
 
 VibeFlow is a VS Code extension that adapts to your coding flow, dynamically adjusting to your coding style and energy. Whether you're debugging, coding, or testing, VibeFlow keeps you focused and in the zone.
 
-![Demo]()
+> **Note:** VibeFlow is currently in development and needs to be published on the VS Code Marketplace.
 
+## Demo
 
+[![VibeFlow Demo](https://img.youtube.com/vi/4xy54a6E5kg/maxresdefault.jpg)](https://youtu.be/4xy54a6E5kg)
+
+Watch the full demo: [https://youtu.be/4xy54a6E5kg](https://youtu.be/4xy54a6E5kg)
 
 ## Key Features
 
 -  **Music Auto-Adapts**: The soundtrack dynamically changes to match your coding rhythm: whether you're in the zone, stuck on a bug, or just chilling.
+
+   ![Music Adaptation](assets/lofi-girl-sleeping-wallpaper-1920x1200_6.jpg)
+
 -  **Alternate Personalities**: Choose your companion's vibe: encouraging, roasting, or neutral. Get the motivation you need, exactly how you need it or don't (?)
+
+   ![Personality Selection](assets/images.jpg)
+
 -  **Image Avatar Animations**: The companion's mood is visualized with animated image avatars that change based on your activity.
+
+   ![Avatar Animations](assets/maxresdefault.jpg)
+
 -  **Smart Activity Detection**: VibeFlow knows when you're productive, stuck, or even procrastinating, and adjusts the atmosphere accordingly.
+
+   ![Activity Detection](assets/images%20(1).jpg)
+
 -  **Test Celebrations**: Get a little celebration with special sounds and animations every time your tests pass!
 -  **Strudel Live Coding**: Integrates with Strudel for algorithmic music generation, turning your code into a symphony.
 -  **Non-Intrusive UI**: No clutter. VibeFlow lives as a small, friendly icon in your status bar, there when you need it and out of the way when you don't.
@@ -30,17 +46,17 @@ Tip: Many popular extensions utilize animations. This is an excellent way to sho
 
 <details>
 
-Let's be real for a second, coding can be a lonely grind. Staring at a screen for hours, wrestling with complex logic, and the endless cycle of coding, testing, and debugging can drain your energy and motivation. Many developers feel isolated or hit creative walls, turning a passion into a chore. The silence can be deafening, but generic music playlists often become distracting. That’s why we made VibeFlow.
+Let's be real for a second, coding can be a lonely grind. Staring at a screen for hours, wrestling with complex logic, and the endless cycle of coding, testing, and debugging can drain your energy and motivation. Many developers feel isolated or hit creative walls, turning a passion into a chore. The silence can be deafening, but generic music playlists often become distracting. That's why we made VibeFlow.
 
-Vibe Driven Development (VDD) is all about creating a coding environment that aligns with your rhythm, boosts your energy, and keeps you in the zone— whether you're tackling tough problems or just vibing. The principle behind VDD is simple: coding is better when it’s dynamic, engaging, and personalized. I mean sure, it could be very ineffective but entertaining, but you know you've got to give this a try.
+Vibe Driven Development (VDD) is all about creating a coding environment that aligns with your rhythm, boosts your energy, and keeps you in the zone— whether you're tackling tough problems or just vibing. The principle behind VDD is simple: coding is better when it's dynamic, engaging, and personalized. I mean sure, it could be very ineffective but entertaining, but you know you've got to give this a try.
 
-We believe that your development experience shouldn’t be a lonely grind but a creative journey. By combining AI, music, and a dash of humor, VDD turns your editor into a companion that adapts to your needs—motivating, celebrating, or just keeping you company when things get tough. It’s about feeling more connected, more productive, and having fun while you code. The ultimate goal? A more joyful, less isolating coding experience that lets you flow effortlessly from task to task.
+We believe that your development experience shouldn't be a lonely grind but a creative journey. By combining AI, music, and a dash of humor, VDD turns your editor into a companion that adapts to your needs—motivating, celebrating, or just keeping you company when things get tough. It's about feeling more connected, more productive, and having fun while you code. The ultimate goal? A more joyful, less isolating coding experience that lets you flow effortlessly from task to task.
 </details>
 
 ### 📢 Is this even a real problem?
 
 <details>
-Absolutely. Developer burnout is real, and the environment you code in plays a huge role. A lack of engagement and the repetitive nature of tasks can lead to a drop in both productivity and happiness. VibeFlow was created to tackle this head-on. By creating a dynamic, responsive, and personalized atmosphere, it turns your editor into a space that feels alive. It’s not just about background music; it's about having a companion that understands your workflow and is there to cheer you on, roast your silly mistakes, or just provide a calming presence. It helps you stay in the zone, pushes you through the tough spots, and makes the whole process feel more like a creative partnership.
+Absolutely. Developer burnout is real, and the environment you code in plays a huge role. A lack of engagement and the repetitive nature of tasks can lead to a drop in both productivity and happiness. VibeFlow was created to tackle this head-on. By creating a dynamic, responsive, and personalized atmosphere, it turns your editor into a space that feels alive. It's not just about background music; it's about having a companion that understands your workflow and is there to cheer you on, roast your silly mistakes, or just provide a calming presence. It helps you stay in the zone, pushes you through the tough spots, and makes the whole process feel more like a creative partnership.
 </details>
 -->
 
@@ -48,11 +64,18 @@ Absolutely. Developer burnout is real, and the environment you code in plays a h
 
 ### 1. Installation
 
-You can install VibeFlow directly from the VS Code Marketplace.
+> **Coming Soon:** VibeFlow will be available on the VS Code Marketplace. For now, you can build and install it locally from the source code.
 
-- Open the Extensions view in VS Code (Ctrl+Shift+X).
-- Search for Vibe Driven Development.
-- Click Install.
+**For Development Installation:**
+1. Clone this repository
+2. Run `npm install` to install dependencies
+3. Run `npm run compile` to build the extension
+4. Press F5 in VS Code to launch the Extension Development Host
+
+**Once Published on Marketplace:**
+- Open the Extensions view in VS Code (Ctrl+Shift+X)
+- Search for "Vibe Driven Development"
+- Click Install
 
 ### 2. Get Started
 
@@ -78,7 +101,6 @@ Access these from the Command Palette (Ctrl+Shift+P):
 - `VDD: Show Vibe Companion`: Opens the side panel to show the image avatar companion, metrics, and music controls.
 - `VDD: Toggle UI Mode`: Toggles the compact UI mode.
 - `VDD: Toggle Music Mode`: Switches between automatic and playlist music modes.
-
 
 <!-- ## Extension Settings
 Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
