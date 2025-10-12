@@ -8,8 +8,6 @@ VibeFlow is a VS Code extension that adapts to your coding flow, dynamically adj
 
 [![VibeFlow Demo](https://img.youtube.com/vi/4xy54a6E5kg/maxresdefault.jpg)](https://youtu.be/4xy54a6E5kg)
 
-Watch the full demo: [https://youtu.be/4xy54a6E5kg](https://youtu.be/4xy54a6E5kg)
-
 ## Key Features
 
 -  **Music Auto-Adapts**: The soundtrack dynamically changes to match your coding rhythm: whether you're in the zone, stuck on a bug, or just chilling.
@@ -55,11 +53,8 @@ Absolutely. Developer burnout is real, and the environment you code in plays a h
 
 > **Coming Soon:** VibeFlow will be available on the VS Code Marketplace. For now, you can build and install it locally from the source code.
 
-**For Development Installation:**
-1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Run `npm run compile` to build the extension
-4. Press F5 in VS Code to launch the Extension Development Host
+**For Development Installation:** 
+(See the [SETUP](Setup.md) )
 
 **Once Published on Marketplace:**
 - Open the Extensions view in VS Code (Ctrl+Shift+X)
