@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
 			testRunner = new TestRunner(activityDetector);
 		}
 
-		if (durationInterval) clearInterval(durationInterval);
+		if (durationInterval) {clearInterval(durationInterval);};
 		durationInterval = setInterval(() => {
 			if (!isPaused && musicStarted) {
 				const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
@@ -267,19 +267,19 @@ export function activate(context: vscode.ExtensionContext) {
         					console.log('Opening playlist:', selectedPlaylist.title, selectedPlaylist.url);
         
        					vscode.env.openExternal(vscode.Uri.parse(selectedPlaylist.url)).then(() => {
-            				console.log('Playlist opened successfully');
-            					currentPanel?.webview.postMessage({
-                				command: 'playlistOpened',
-                				title: selectedPlaylist.title,
-                				url: selectedPlaylist.url
-            				});
-        				}).catch((error) => {
-            				console.error('Error opening playlist:', error);
-            					currentPanel?.webview.postMessage({
-                				command: 'playlistError',
-                				error: 'Failed to open playlist. Please try again.'
-            				});
-        				});
+       									console.log('Playlist opened successfully');
+       										currentPanel?.webview.postMessage({
+       					    				command: 'playlistOpened',
+       					    				title: selectedPlaylist.title,
+       					    				url: selectedPlaylist.url
+       									});
+       					}, (error) => {
+       									console.error('Error opening playlist:', error);
+       										currentPanel?.webview.postMessage({
+       					    				command: 'playlistError',
+       					    				error: 'Failed to open playlist. Please try again.'
+       									});
+       					});
     					} else {
         					console.warn('No playlists available for state:', message.state);
         					currentPanel?.webview.postMessage({
@@ -311,7 +311,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		currentPanel.onDidDispose(() => {
 			currentPanel = undefined;
-			if (durationInterval) clearInterval(durationInterval);
+			if (durationInterval) {clearInterval(durationInterval);};
 		});
 	});
 
@@ -409,7 +409,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-	if (durationInterval) clearInterval(durationInterval);
+	if (durationInterval) {clearInterval(durationInterval);};
 	activityDetector?.dispose();
 	musicEngine?.dispose();
 	strudelGenerator?.dispose();

@@ -10,7 +10,7 @@ VibeFlow is a VS Code extension that adapts to your coding flow, dynamically adj
 
 -  **Music Auto-Adapts**: The soundtrack dynamically changes to match your coding rhythm: whether you're in the zone, stuck on a bug, or just chilling.
 -  **Alternate Personalities**: Choose your companion's vibe: encouraging, roasting, or neutral. Get the motivation you need, exactly how you need it or don't (?)
--  **ASCII Art Animations**: The companion's mood is visualized with fun, animated ASCII art that changes based on your activity.
+-  **Image Avatar Animations**: The companion's mood is visualized with animated image avatars that change based on your activity.
 -  **Smart Activity Detection**: VibeFlow knows when you're productive, stuck, or even procrastinating, and adjusts the atmosphere accordingly.
 -  **Test Celebrations**: Get a little celebration with special sounds and animations every time your tests pass!
 -  **Strudel Live Coding**: Integrates with Strudel for algorithmic music generation, turning your code into a symphony.
@@ -54,23 +54,16 @@ You can install VibeFlow directly from the VS Code Marketplace.
 - Search for Vibe Driven Development.
 - Click Install.
 
-### 2. Configure Your AI API Key (Optional, but Recommended)
+### 2. Get Started
 
-For the full AI music generation experience, you’ll need a free Google Gemini API key.
-
-- Get your key from Google AI Studio.
-- In VS Code, open Settings (Ctrl+,).
-- Search for `vibe-driven-development.geminiAPIkey`.
-- Paste your API key into the input field.
-
-If you don't provide a key, VibeFlow will use a cool set of fallback presets!
+VibeFlow works out of the box with curated music presets. For future AI-powered features, API key configuration will be available.
 
 ### 3. Basic Usage
 
 Once installed, VibeFlow gets to work automatically.
 
-- **See the Vibe**: Look for the heart icon ($(heart)) in your status bar. This shows the current vibe. Click it to change modes!
-- **Open the Companion**: Run the command `VDD: Show Vibe Companion` from the Command Palette (Ctrl+Shift+P) to open the companion window with ASCII art and activity metrics.
+- **See the Vibe**: Look for the 👩‍💻 icon in your status bar. This shows the current vibe. Click it to toggle the UI!
+- **Open the Companion**: Run the command `VDD: Show Vibe Companion` from the Command Palette (Ctrl+Shift+P) to open the companion window with image avatar and activity metrics.
 - **Start Coding**: The music and vibe will adapt as you work. Enjoy the flow!
 
 <!-- ## Requirements
@@ -82,18 +75,10 @@ If you have any requirements or dependencies, add a section describing those and
 
 Access these from the Command Palette (Ctrl+Shift+P):
 
-- `VDD: Show Vibe Companion`: Opens the side panel to show the ASCII art companion, metrics, and music controls.
-- `VDD: Change Vibe Mode`: Quickly cycle between encouraging, roasting, and neutral personalities.
-- `VDD: Toggle Music`: Turns the adaptive music on or off.
+- `VDD: Show Vibe Companion`: Opens the side panel to show the image avatar companion, metrics, and music controls.
+- `VDD: Toggle UI Mode`: Toggles the compact UI mode.
+- `VDD: Toggle Music Mode`: Switches between automatic and playlist music modes.
 
-### Extension Settings
-
-Customize VibeFlow by going to File > Preferences > Settings and searching for "Vibe Driven Development".
-
-- `vibe-driven-development.geminiAPIkey`: Your Google Gemini API key for AI music generation.
-- `vibe-driven-development.defaultVibe`: Set the default companion vibe mode on startup (encouraging, roasting, or neutral).
-- `vibe-driven-development.enableMusic`: Enable or disable the background music entirely.
-- `vibe-driven-development.musicMode`: Choose your music generation mode (curated, ai, strudel, or hybrid).
 
 <!-- ## Extension Settings
 Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
@@ -101,6 +86,13 @@ This extension contributes the following settings:
 
 - `myExtension.enable`: Enable/disable this extension.
 - `myExtension.thing`: Set to `blah` to do something. -->
+
+## Future Enhancements
+
+- **Advanced Strudel Integration**: Deeper integration with Strudel for real-time algorithmic music generation based on coding patterns.
+- **Custom Avatar Themes**: User-defined themes for the companion avatar.
+- **Collaborative Vibes**: Sync vibes across team members for pair programming sessions.
+- **AI-Powered Insights**: Use AI to provide coding tips and suggestions based on detected activity patterns.
 
 ## Contributing
 
