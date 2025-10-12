@@ -13,20 +13,9 @@ Watch the full demo: [https://youtu.be/4xy54a6E5kg](https://youtu.be/4xy54a6E5kg
 ## Key Features
 
 -  **Music Auto-Adapts**: The soundtrack dynamically changes to match your coding rhythm: whether you're in the zone, stuck on a bug, or just chilling.
-
-   ![Music Adaptation](assets/lofi-girl-sleeping-wallpaper-1920x1200_6.jpg)
-
 -  **Alternate Personalities**: Choose your companion's vibe: encouraging, roasting, or neutral. Get the motivation you need, exactly how you need it or don't (?)
-
-   ![Personality Selection](assets/images.jpg)
-
 -  **Image Avatar Animations**: The companion's mood is visualized with animated image avatars that change based on your activity.
-
-   ![Avatar Animations](assets/maxresdefault.jpg)
-
 -  **Smart Activity Detection**: VibeFlow knows when you're productive, stuck, or even procrastinating, and adjusts the atmosphere accordingly.
-
-   ![Activity Detection](assets/images%20(1).jpg)
 
 -  **Test Celebrations**: Get a little celebration with special sounds and animations every time your tests pass!
 -  **Strudel Live Coding**: Integrates with Strudel for algorithmic music generation, turning your code into a symphony.
